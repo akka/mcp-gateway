@@ -16,7 +16,7 @@ public record GoogleDriveConnection(
         return new GoogleDriveConnection(null, null, null, null, null, null, null, null);
     }
 
-    public boolean isConnected() {
+    public boolean isConnected() { 
         return accessToken != null;
     }
 
