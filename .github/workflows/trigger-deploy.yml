@@ -63,8 +63,28 @@ jobs:
               echo "could not locate dispatched run for ${wf}"; FAILURES="${FAILURES} ${wf}"; echo "::endgroup::"; return
             fi
             echo "watching internal run ${run_id} for ${wf}"
-            if ! gh run watch "${run_id}" -R "${TARGET}" --exit-status --interval 15; then
-              echo "internal deploy FAILED: ${wf} (run ${run_id})"; FAILURES="${FAILURES} ${wf}"
+            # Lean poll: one lightweight run-status call per interval (NOT gh run watch, which
+            # also pulls the jobs list each time). Tolerate transient 403/5xx (shared bot token
+            # can be rate-limited) by retrying rather than treating a read error as a failure.
+            status=""; conclusion=""; misses=0
+            while true; do
+              if out=$(gh api "repos/${TARGET}/actions/runs/${run_id}" --jq '.status+"|"+(.conclusion // "")' 2>/dev/null) && [ -n "${out}" ]; then
+                misses=0; status="${out%%|*}"; conclusion="${out#*|}"
+                echo "  ${wf}: status=${status} conclusion=${conclusion:-<pending>}"
+                [ "${status}" = "completed" ] && break
+              else
+                misses=$((misses + 1))
+                echo "  ${wf}: could not read status (attempt ${misses}; likely rate limit)"
+                if [ "${misses}" -ge 20 ]; then
+                  echo "  giving up polling ${wf}; deploy may still be running — verify in the internal repo"
+                  FAILURES="${FAILURES} ${wf}(status-unknown)"; echo "::endgroup::"; return
+                fi
+              fi
+              sleep 20
+            done
+            if [ "${conclusion}" != "success" ]; then
+              echo "internal deploy did not succeed: ${wf} (conclusion=${conclusion}, run ${run_id})"
+              FAILURES="${FAILURES} ${wf}"
             fi
             echo "::endgroup::"
           }
