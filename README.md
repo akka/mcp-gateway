@@ -1,4 +1,4 @@
-# MCP Gateway
+# MCP Gateway 
 
 One place to connect your AI assistant to the tools Akka runs on.
 
