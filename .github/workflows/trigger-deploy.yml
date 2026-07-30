@@ -1,11 +1,13 @@
 name: Trigger internal deploy
 
-# On merge to main, tell the internal repo (which holds the deploy secrets and
-# self-hosted runner) to build & deploy the changed component(s). The internal
-# workflow checks out THIS public repo at the pushed SHA and deploys from it.
-# Nothing internal (registry hosts, Akka token, Cloudsmith creds) lives here —
-# only INTERNAL_DISPATCH_TOKEN, a token scoped to fire repository_dispatch on the
-# internal repo.
+# On merge to main, invoke the internal repo (which holds the deploy secrets and
+# self-hosted runner) to build & deploy the changed component(s), and WAIT for each
+# deploy's result so this run reflects success/failure. The internal workflow checks
+# out THIS public repo at the pushed SHA and deploys from it.
+#
+# Uses workflow_dispatch (not repository_dispatch) so we can correlate and wait on the
+# triggered run. INTERNAL_DISPATCH_TOKEN is a bot fine-grained PAT scoped to
+# akka/mcp-gateway-internal with Actions: read & write.
 
 on:
   push:
@@ -19,14 +21,15 @@ jobs:
         with:
           fetch-depth: 2  # need the previous commit to diff changed paths
 
-      - name: Determine changed components and dispatch per-service
+      - name: Dispatch changed services to internal repo and wait for each
         env:
           GH_TOKEN: ${{ secrets.INTERNAL_DISPATCH_TOKEN }}
           TARGET: akka/mcp-gateway-internal
           SHA: ${{ github.sha }}
           BEFORE: ${{ github.event.before }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+
           if [ -z "${BEFORE}" ] || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
             CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
           else
@@ -34,15 +37,43 @@ jobs:
           fi
           echo "Changed files:"; echo "${CHANGED}"
 
-          dispatch() {
-            echo "→ dispatching ${1}"
-            printf '{"event_type":"%s","client_payload":{"sha":"%s"}}' "${1}" "${SHA}" \
-              | gh api "repos/${TARGET}/dispatches" --input -
+          FAILURES=""
+
+          # Dispatch one internal workflow and block until its run completes, mirroring
+          # its conclusion. Correlate our run via a unique id stamped into the run-name.
+          trigger_and_wait() {
+            wf="$1"
+            cid="dispatch-$(date -u +%s)-${RANDOM}"
+            echo "::group::${wf} (cid=${cid})"
+            if ! gh workflow run "${wf}" -R "${TARGET}" -f sha="${SHA}" -f correlation="${cid}"; then
+              echo "dispatch call failed for ${wf}"; FAILURES="${FAILURES} ${wf}"; echo "::endgroup::"; return
+            fi
+            run_id=""
+            for _ in $(seq 1 24); do
+              run_id=$(gh run list -R "${TARGET}" --workflow "${wf}" --event workflow_dispatch -L 20 \
+                        --json databaseId,name \
+                        --jq "[.[] | select(.name | contains(\"${cid}\"))][0].databaseId" 2>/dev/null)
+              if [ -n "${run_id}" ] && [ "${run_id}" != "null" ]; then break; fi
+              sleep 5
+            done
+            if [ -z "${run_id}" ] || [ "${run_id}" = "null" ]; then
+              echo "could not locate dispatched run for ${wf}"; FAILURES="${FAILURES} ${wf}"; echo "::endgroup::"; return
+            fi
+            echo "watching internal run ${run_id} for ${wf}"
+            if ! gh run watch "${run_id}" -R "${TARGET}" --exit-status --interval 15; then
+              echo "internal deploy FAILED: ${wf} (run ${run_id})"; FAILURES="${FAILURES} ${wf}"
+            fi
+            echo "::endgroup::"
           }
 
           # Gateway service: root src/** or root pom.xml
-          if echo "${CHANGED}" | grep -qE '^(src/|pom\.xml$)'; then dispatch deploy-mcp-gateway; fi
+          echo "${CHANGED}" | grep -qE '^(src/|pom\.xml$)'                        && trigger_and_wait deploy.yml
           # Sub-servers: each under its own directory
-          if echo "${CHANGED}" | grep -q '^mcp-servers/okta-mcp-server/'; then dispatch deploy-okta-mcp; fi
-          if echo "${CHANGED}" | grep -q '^mcp-servers/slack-mcp-server/'; then dispatch deploy-slack-mcp; fi
-          if echo "${CHANGED}" | grep -q '^mcp-servers/akka-salesforce-mcp-server/'; then dispatch deploy-akka-salesforce-mcp; fi
+          echo "${CHANGED}" | grep -q  '^mcp-servers/okta-mcp-server/'            && trigger_and_wait deploy-okta-mcp.yml
+          echo "${CHANGED}" | grep -q  '^mcp-servers/slack-mcp-server/'           && trigger_and_wait deploy-slack-mcp.yml
+          echo "${CHANGED}" | grep -q  '^mcp-servers/akka-salesforce-mcp-server/' && trigger_and_wait deploy-akka-salesforce-mcp.yml
+
+          if [ -n "${FAILURES}" ]; then
+            echo "❌ failed or untrackable:${FAILURES}"; exit 1
+          fi
+          echo "✅ all triggered deploys completed successfully"
