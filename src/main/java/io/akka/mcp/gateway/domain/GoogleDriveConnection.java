@@ -7,7 +7,7 @@ public record GoogleDriveConnection(
         String refreshToken,
         Instant tokenExpiresAt,
         String pendingState,
-        String codeVerifier, 
+        String codeVerifier,
         String clientId,
         String tokenEndpoint,
         Instant pendingExpiresAt
