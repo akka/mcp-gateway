@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIGZpbGw9IiMwNDA2MWEiIC8+CiAgCiAgPCEtLSBDZW50cmFsIEdhdGV3YXkvTmV0d29yayBTeW1ib2wgLS0+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMjU2LCAyNTYpIj4KICAgIDwhLS0gVGhpY2sgQmx1ZSBDb25uZWN0aW9uIExpbmVzIC0tPgogICAgPHBhdGggZD0iTS0xMDAgODAgTDAgMCBMMTAwIDgwIiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgLz4KICAgIDxsaW5lIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSItNDAiIHN0cm9rZT0iIzNiODJmNiIgc3Ryb2tlLXdpZHRoPSIyMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAvPgogICAgCiAgICA8IS0tIEJvbGQgVXB3YXJkIEFycm93IChXaGl0ZSkgLS0+CiAgICA8cGF0aCBkPSJNMCAtMTQwIFY0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIC8+CiAgICA8cGF0aCBkPSJNLTQwIC0xMDAgTDAgLTE0NSBMNDAgLTEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIC8+CiAgICAKICAgIDwhLS0gTGFyZ2UgR29sZCBOb2RlcyAtLT4KICAgIDxjaXJjbGUgY3g9Ii0xMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIwIiBjeT0iMCIgcj0iMzIiIGZpbGw9IiNmYmJmMjQiIC8+CiAgPC9nPgo8L3N2Zz4=">
+    <title>MCP Connections</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 640px; margin: 0 auto; padding: 0 24px; color: #1a1a1a; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #e8e8e8; margin-bottom: 36px; position: relative; }
+        .top-bar-title { font-size: 1rem; font-weight: 600; color: #1a1a1a; }
+        .top-bar-logo { height: 36px; width: auto; display: block; }
+        .top-bar-right { display: flex; align-items: center; gap: 12px; }
+        .top-bar-user { font-size: 0.88rem; color: #555; }
+        .hamburger { background: none; border: none; cursor: pointer; padding: 4px 6px; border-radius: 6px; display: flex; flex-direction: column; gap: 5px; }
+        .hamburger:hover { background: #f0f0f0; }
+        .hamburger span { display: block; width: 22px; height: 2px; background: #444; border-radius: 2px; transition: all 0.2s; }
+        .nav-menu { display: none; position: absolute; top: calc(100% + 4px); right: 0; background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); min-width: 200px; z-index: 100; overflow: hidden; }
+        .nav-menu.open { display: block; }
+        .nav-menu a { display: block; padding: 11px 18px; font-size: 0.9rem; color: #1a1a1a; text-decoration: none; }
+        .nav-menu a:hover { background: #f5f5f5; }
+        .nav-menu a.active { font-weight: 600; color: #0070d2; }
+        .nav-divider { border: none; border-top: 1px solid #e8e8e8; margin: 4px 0; }
+        .nav-menu a.danger { color: #c0392b; }
+        h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; margin-top: 0; }
+        p.subtitle { color: #666; margin-top: 0; margin-bottom: 32px; }
+        .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px 22px; margin-bottom: 20px; }
+        .card h2 { font-size: 1rem; font-weight: 600; margin: 0 0 12px; }
+        .status { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-weight: 500; font-size: 0.9rem; }
+        .connected { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .disconnected { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .loading { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
+        .since { font-size: 0.82rem; font-weight: 400; opacity: 0.8; display: block; margin-top: 4px; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn { display: inline-block; padding: 9px 18px; border-radius: 6px; text-decoration: none; font-size: 0.88rem; font-weight: 500; }
+        .btn-primary { background: #0070d2; color: white; border: none; cursor: pointer; }
+        .btn-primary:hover { background: #005fb2; }
+        .btn-danger { background: #fff; color: #c0392b; border: 1px solid #c0392b; }
+        .btn-danger:hover { background: #fdf0ef; }
+        .btn-secondary { background: #fff; color: #0070d2; border: 1px solid #0070d2; }
+        .btn-secondary:hover { background: #f0f7ff; }
+        .token-expiry { font-size: 0.78rem; color: #aaa; margin-top: 14px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+        .test-result { margin-top: 12px; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; display: none; }
+        .test-ok { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .test-fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .token-box { margin-top: 12px; display: none; }
+        .token-box code { display: block; background: #f4f4f4; border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; font-size: 0.78rem; word-break: break-all; cursor: pointer; }
+        .token-box code:hover { background: #eaeaea; }
+        .token-hint { font-size: 0.78rem; color: #666; margin-top: 4px; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+        .card-header h2 { margin: 0; }
+        .card-header-right { display: flex; align-items: center; gap: 10px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+        .status-dot.connected { background: #28a745; }
+        .status-dot.disconnected { background: #dc3545; }
+        .chevron { font-size: 0.75rem; color: #888; transition: transform 0.2s; }
+        .chevron.open { transform: rotate(180deg); }
+        .card-body { display: none; margin-top: 14px; }
+        .flash { padding: 12px 16px; border-radius: 6px; margin-bottom: 24px; font-size: 0.9rem; font-weight: 500; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .card-locked { opacity: 0.45; pointer-events: none; }
+        .card-locked .card-header { cursor: default; }
+        .locked-badge { font-size: 0.75rem; font-weight: 500; color: #888; background: #f0f0f0; border: 1px solid #ddd; border-radius: 20px; padding: 2px 8px; }
+        .session-strip { margin-top: 32px; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px 20px; }
+        .session-strip h3 { font-size: 0.85rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px; }
+        .session-token-row { display: flex; align-items: center; gap: 10px; }
+        .session-token-value { flex: 1; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.82rem; background: #f4f4f4; border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; word-break: break-all; color: #333; }
+        .btn-copy-session { padding: 7px 14px; border-radius: 6px; border: 1px solid #0070d2; background: #fff; color: #0070d2; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+        .btn-copy-session:hover { background: #f0f7ff; }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <svg width="210" height="60" viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg" style="display:block"><rect width="120" height="120" fill="#04061a"/><g transform="translate(60,65) scale(0.28)"><path d="M-100 80 L0 0 L100 80" fill="none" stroke="#3b82f6" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/><line x1="0" y1="0" x2="0" y2="-40" stroke="#3b82f6" stroke-width="24" stroke-linecap="round"/><path d="M0 -140 V40" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/><path d="M-45 -95 L0 -145 L45 -95" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><circle cx="-100" cy="80" r="32" fill="#fbbf24"/><circle cx="100" cy="80" r="32" fill="#fbbf24"/><circle cx="0" cy="0" r="36" fill="#fbbf24"/></g><g transform="translate(136,62)"><text font-family="Inter,system-ui,-apple-system,sans-serif" font-weight="900" font-size="52" fill="#04061a" letter-spacing="-2" dominant-baseline="auto">AKKA</text><text y="30" font-family="Inter,system-ui,-apple-system,sans-serif" font-weight="500" font-size="26" fill="#04061a" dominant-baseline="auto">MCP Gateway</text></g></svg>
+        <div class="top-bar-right">
+            <span class="top-bar-user" id="user-display"></span>
+            <button class="hamburger" id="menu-btn" onclick="toggleMenu()" aria-label="Menu">
+                <span></span><span></span><span></span>
+            </button>
+            <nav class="nav-menu" id="nav-menu">
+                <a href="/" class="active">Connections</a>
+                <a href="/mcp/tools">MCP Tools</a>
+                <a href="/how-to-use">How to use with Claude</a>
+                <a href="/auth/permissions" id="nav-permissions">Permissions</a>
+                <hr class="nav-divider" id="nav-admin-divider" style="display:none">
+                <a href="/okta-status" id="nav-okta-status" style="display:none">Okta Status</a>
+                <a href="/interactions" id="nav-interactions" style="display:none">Interactions</a>
+                <hr class="nav-divider">
+                <a href="/auth/logout" class="danger">Sign out</a>
+            </nav>
+        </div>
+    </div>
+    <div id="flash" class="flash" style="display:none"></div>
+    <h1>MCP Connections</h1>
+    <p class="subtitle">Manage OAuth connections used by the MCP agents.</p>
+    <div id="section-accessible"></div>
+    <div id="section-inaccessible" style="display:none">
+        <h2 style="font-size:1rem; font-weight:600; color:#888; margin:32px 0 12px;">Not available</h2>
+        <p style="font-size:0.88rem; color:#999; margin:0 0 16px;">These integrations are not assigned to you in Okta. Contact your admin to request access.</p>
+        <div id="inaccessible-cards"></div>
+    </div>
+    <div id="how-to-nudge" style="display:none; background:#f7f8fa; border:1px solid #e0e0e0; border-radius:8px; padding:10px 16px; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <span style="font-size:0.86rem; color:#555;">New here? <a href="/how-to-use" style="color:#0070d2; font-weight:500;">Learn how to add this to Claude</a></span>
+        <button onclick="dismissNudge()" style="background:none; border:none; cursor:pointer; color:#aaa; font-size:1rem; line-height:1; padding:0 2px;" aria-label="Dismiss">✕</button>
+    </div>
+
+    <div style="margin-top: 32px"></div>
+
+    <div class="card" data-mcp-id="salesforce" style="display:none">
+        <div class="card-header" onclick="toggleCard('sf')">
+            <h2>Salesforce</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="sf-dot"></span>
+                <span class="chevron" id="sf-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="sf-body">
+            <div id="sf-status" class="status loading">Loading status…</div>
+            <div id="sf-actions" class="actions"></div>
+            <div id="sf-test-result" class="test-result"></div>
+            <div id="sf-token-box" class="token-box">
+                <code id="sf-token" onclick="copyToken('sf-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="sf-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="zoho-desk" style="display:none">
+        <div class="card-header" onclick="toggleCard('zoho')">
+            <h2>Zoho Desk</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="zoho-dot"></span>
+                <span class="chevron" id="zoho-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="zoho-body">
+            <div id="zoho-status" class="status loading">Loading status…</div>
+            <div id="zoho-actions" class="actions"></div>
+            <div id="zoho-test-result" class="test-result"></div>
+            <div id="zoho-token-box" class="token-box">
+                <code id="zoho-token" onclick="copyToken('zoho-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="zoho-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="google-drive" style="display:none">
+        <div class="card-header" onclick="toggleCard('gdrive')">
+            <h2>Google Drive</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="gdrive-dot"></span>
+                <span class="chevron" id="gdrive-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="gdrive-body">
+            <div id="gdrive-status" class="status loading">Loading status…</div>
+            <div id="gdrive-actions" class="actions"></div>
+            <div id="gdrive-test-result" class="test-result"></div>
+            <div id="gdrive-token-box" class="token-box">
+                <code id="gdrive-token" onclick="copyToken('gdrive-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="gdrive-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="reo" style="display:none">
+        <div class="card-header" onclick="toggleCard('reo')">
+            <h2>Reo</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="reo-dot"></span>
+                <span class="chevron" id="reo-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="reo-body">
+            <div id="reo-status" class="status loading">Loading status…</div>
+            <div id="reo-actions" class="actions"></div>
+            <div id="reo-test-result" class="test-result"></div>
+            <div id="reo-token-box" class="token-box">
+                <code id="reo-token" onclick="copyToken('reo-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="reo-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="gmail" style="display:none">
+        <div class="card-header" onclick="toggleCard('gmail')">
+            <h2>Gmail</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="gmail-dot"></span>
+                <span class="chevron" id="gmail-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="gmail-body">
+            <div id="gmail-status" class="status loading">Loading status…</div>
+            <div id="gmail-actions" class="actions"></div>
+            <div id="gmail-test-result" class="test-result"></div>
+            <div id="gmail-token-box" class="token-box">
+                <code id="gmail-token" onclick="copyToken('gmail-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="gmail-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="google-calendar" style="display:none">
+        <div class="card-header" onclick="toggleCard('gcal')">
+            <h2>Google Calendar</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="gcal-dot"></span>
+                <span class="chevron" id="gcal-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="gcal-body">
+            <div id="gcal-status" class="status loading">Loading status…</div>
+            <div id="gcal-actions" class="actions"></div>
+            <div id="gcal-test-result" class="test-result"></div>
+            <div id="gcal-token-box" class="token-box">
+                <code id="gcal-token" onclick="copyToken('gcal-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="gcal-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="groundcover" style="display:none">
+        <div class="card-header" onclick="toggleCard('gc')">
+            <h2>Groundcover</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="gc-dot"></span>
+                <span class="chevron" id="gc-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="gc-body">
+            <div id="gc-status" class="status loading">Loading status…</div>
+            <div id="gc-actions" class="actions"></div>
+            <div id="gc-test-result" class="test-result"></div>
+            <div id="gc-token-box" class="token-box">
+                <code id="gc-token" onclick="copyToken('gc-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="gc-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="hubspot" style="display:none">
+        <div class="card-header" onclick="toggleCard('hubspot')">
+            <h2>HubSpot</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="hubspot-dot"></span>
+                <span class="chevron" id="hubspot-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="hubspot-body">
+            <div id="hubspot-status" class="status loading">Loading status…</div>
+            <div id="hubspot-actions" class="actions"></div>
+            <div id="hubspot-test-result" class="test-result"></div>
+            <div id="hubspot-token-box" class="token-box">
+                <code id="hubspot-token" onclick="copyToken('hubspot-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="hubspot-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="slack" style="display:none">
+        <div class="card-header" onclick="toggleCard('slack')">
+            <h2>Slack</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="slack-dot"></span>
+                <span class="chevron" id="slack-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="slack-body">
+            <div id="slack-status" class="status loading">Loading status…</div>
+            <div id="slack-actions" class="actions"></div>
+            <div id="slack-test-result" class="test-result"></div>
+            <div id="slack-token-box" class="token-box">
+                <code id="slack-token" onclick="copyToken('slack-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="slack-expiry"></p>
+        </div>
+    </div>
+
+    <div class="card" data-mcp-id="okta-admin" style="display:none">
+        <div class="card-header" onclick="toggleCard('okta')">
+            <h2>Okta</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="okta-dot"></span>
+                <span class="chevron" id="okta-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="okta-body">
+            <div id="okta-status" class="status connected">Available — org-wide user/group lookups, no connection needed</div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            if (!localStorage.getItem('how-to-nudge-dismissed')) {
+                document.getElementById('how-to-nudge').style.display = 'flex';
+            }
+        })();
+
+        function dismissNudge() {
+            localStorage.setItem('how-to-nudge-dismissed', '1');
+            document.getElementById('how-to-nudge').style.display = 'none';
+        }
+
+        function setDot(prefix, state) {
+            var dot = document.getElementById(prefix + '-dot');
+            if (dot) dot.className = 'status-dot ' + state;
+        }
+
+        function toggleCard(prefix) {
+            var body = document.getElementById(prefix + '-body');
+            var chevron = document.getElementById(prefix + '-chevron');
+            var open = body.style.display === 'block';
+            body.style.display = open ? 'none' : 'block';
+            if (open) chevron.classList.remove('open'); else chevron.classList.add('open');
+        }
+
+        function renderStatus(prefix, data, testPath, tokenPath, connectPath, disconnectPath, connectLabel) {
+            var box = document.getElementById(prefix + '-status');
+            var actions = document.getElementById(prefix + '-actions');
+            var expiry = document.getElementById(prefix + '-expiry');
+            if (data.connected) {
+                box.className = 'status connected';
+                box.textContent = 'Connected';
+                actions.innerHTML =
+                    '<button class="btn btn-secondary" onclick="testConnection(\'' + testPath + '\',\'' + prefix + '-test-result\')">Test Connection</button>' +
+                    '<button class="btn btn-secondary" onclick="revealToken(\'' + tokenPath + '\',\'' + prefix + '-token-box\')">Reveal Token</button>' +
+                    '<a class="btn btn-primary" href="' + connectPath + '">Reconnect</a>' +
+                    '<a class="btn btn-danger" href="' + disconnectPath + '">Disconnect</a>';
+                setDot(prefix, 'connected');
+                if (expiry) {
+                    var expiresAt = data.tokenExpiresAt ? new Date(data.tokenExpiresAt) : null;
+                    if (expiresAt) {
+                        expiry.textContent = expiresAt < new Date()
+                            ? 'Token expired ' + expiresAt.toLocaleString() + ' · will refresh automatically'
+                            : 'Token expires ' + expiresAt.toLocaleString() + ' · refreshes automatically';
+                    } else {
+                        expiry.textContent = '';
+                    }
+                }
+            } else {
+                box.className = 'status disconnected';
+                box.textContent = 'Not connected — queries will fail until you connect.';
+                actions.innerHTML = '<a class="btn btn-primary" href="' + connectPath + '">' + connectLabel + '</a>';
+                document.getElementById(prefix + '-test-result').style.display = 'none';
+                document.getElementById(prefix + '-token-box').style.display = 'none';
+                if (expiry) expiry.textContent = '';
+                setDot(prefix, 'disconnected');
+            }
+        }
+
+        function renderSalesforceStatus(data)  { renderStatus('sf',      data, '/salesforce/oauth/test',      '/salesforce/oauth/token',      '/salesforce/oauth/connect',      '/salesforce/oauth/disconnect',      'Connect to Salesforce'); }
+        function renderZohoStatus(data)         { renderStatus('zoho',    data, '/zoho/oauth/test',            '/zoho/oauth/token',            '/zoho/oauth/connect',            '/zoho/oauth/disconnect',            'Connect to Zoho Desk'); }
+        function renderReoStatus(data)          { renderStatus('reo',     data, '/reo/oauth/test',             '/reo/oauth/token',             '/reo/oauth/connect',             '/reo/oauth/disconnect',             'Connect to Reo'); }
+        function renderGmailStatus(data)        { renderStatus('gmail',   data, '/gmail/oauth/test',           '/gmail/oauth/token',           '/gmail/oauth/connect',           '/gmail/oauth/disconnect',           'Connect to Gmail'); }
+        function renderGCalStatus(data)         { renderStatus('gcal',    data, '/google-calendar/oauth/test', '/google-calendar/oauth/token', '/google-calendar/oauth/connect', '/google-calendar/oauth/disconnect', 'Connect to Google Calendar'); }
+        function renderSlackStatus(data)        { renderStatus('slack',   data, '/slack/oauth/test',           '/slack/oauth/token',           '/slack/oauth/connect',           '/slack/oauth/disconnect',           'Connect to Slack'); }
+        function renderGDriveStatus(data)       { renderStatus('gdrive',  data, '/googledrive/oauth/test',     '/googledrive/oauth/token',     '/googledrive/oauth/connect',     '/googledrive/oauth/disconnect',     'Connect to Google Drive'); }
+        function renderGroundcoverStatus(data)  { renderStatus('gc',      data, '/groundcover/test',           '/groundcover/token',           '/groundcover/connect',           '/groundcover/disconnect',           'Connect to Groundcover'); }
+        function renderHubspotStatus(data)      { renderStatus('hubspot', data, '/hubspot/oauth/test',         '/hubspot/oauth/token',         '/hubspot/oauth/connect',         '/hubspot/oauth/disconnect',         'Connect to HubSpot'); }
+
+        function renderError(statusId) {
+            document.getElementById(statusId).className = 'status disconnected';
+            document.getElementById(statusId).textContent = 'Unable to load status. Is the service running?';
+            var prefix = statusId.replace('-status', '');
+            setDot(prefix, 'disconnected');
+        }
+
+        function testConnection(testPath, resultId) {
+            var el = document.getElementById(resultId);
+            el.className = 'test-result loading';
+            el.style.display = 'block';
+            el.textContent = 'Testing…';
+            fetch(testPath, { cache: 'no-store' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    el.className = 'test-result ' + (data.ok ? 'test-ok' : 'test-fail');
+                    el.innerHTML = '';
+                    var msg = document.createElement('div');
+                    msg.textContent = data.message;
+                    el.appendChild(msg);
+                    if (data.tools && data.tools.length > 0) {
+                        var list = document.createElement('ul');
+                        list.style.cssText = 'margin: 6px 0 0 0; padding-left: 18px;';
+                        data.tools.forEach(function(t) {
+                            var li = document.createElement('li');
+                            li.textContent = t;
+                            list.appendChild(li);
+                        });
+                        el.appendChild(list);
+                    }
+                })
+                .catch(function() {
+                    el.className = 'test-result test-fail';
+                    el.textContent = 'Failed to reach test endpoint.';
+                });
+        }
+
+        function revealToken(tokenPath, boxId) {
+            var box = document.getElementById(boxId);
+            if (box.style.display === 'block') { box.style.display = 'none'; return; }
+            fetch(tokenPath, { cache: 'no-store' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var codeId = boxId.replace('-box', '');
+                    document.getElementById(codeId).textContent = data.token;
+                    box.style.display = 'block';
+                });
+        }
+
+        function copyToken(codeId) {
+            var text = document.getElementById(codeId).textContent;
+            navigator.clipboard.writeText(text).then(function() {
+                var el = document.getElementById(codeId);
+                el.textContent = 'Copied!';
+                setTimeout(function() { el.textContent = text; }, 1200);
+            });
+        }
+
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var flash = params.get('flash');
+            if (flash === 'login' || flash === 'already-logged-in') {
+                var el = document.getElementById('flash');
+                el.textContent = flash === 'login' ? 'Signed in successfully.' : 'You are already signed in.';
+                el.style.display = 'block';
+                history.replaceState(null, '', '/');
+            }
+        })();
+
+
+        function toggleMenu() {
+            document.getElementById('nav-menu').classList.toggle('open');
+        }
+        document.addEventListener('click', function(e) {
+            if (!document.getElementById('menu-btn').contains(e.target)) {
+                document.getElementById('nav-menu').classList.remove('open');
+            }
+        });
+
+        var STATUS_FETCHERS = {
+            'salesforce':      function() { fetch('/salesforce/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSalesforceStatus).catch(function() { renderError('sf-status'); }); },
+            'zoho-desk':       function() { fetch('/zoho/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderZohoStatus).catch(function() { renderError('zoho-status'); }); },
+            'google-drive':    function() { fetch('/googledrive/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGDriveStatus).catch(function() { renderError('gdrive-status'); }); },
+            'reo':             function() { fetch('/reo/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderReoStatus).catch(function() { renderError('reo-status'); }); },
+            'gmail':           function() { fetch('/gmail/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGmailStatus).catch(function() { renderError('gmail-status'); }); },
+            'google-calendar': function() { fetch('/google-calendar/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGCalStatus).catch(function() { renderError('gcal-status'); }); },
+            'groundcover':     function() { fetch('/groundcover/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGroundcoverStatus).catch(function() { renderError('gc-status'); }); },
+            'hubspot':         function() { fetch('/hubspot/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderHubspotStatus).catch(function() { renderError('hubspot-status'); }); },
+            'slack':           function() { fetch('/slack/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSlackStatus).catch(function() { renderError('slack-status'); }); },
+            'okta-admin':      function() { setDot('okta', 'connected'); }
+        };
+
+        fetch('/auth/me', { cache: 'no-store' })
+            .then(function(r) {
+                if (r.status === 401 || r.redirected) { window.location.href = '/login'; return null; }
+                return r.json();
+            })
+            .then(function(data) {
+                if (!data) return;
+                document.getElementById('user-display').textContent = data.displayName || data.email;
+                if (data.canAdmin) {
+                    document.getElementById('nav-admin-divider').style.display = '';
+                    document.getElementById('nav-okta-status').style.display = '';
+                    document.getElementById('nav-interactions').style.display = '';
+                }
+
+                fetch('/mcp/access', { cache: 'no-store' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(access) {
+                        var sectionA = document.getElementById('section-accessible');
+                        var sectionB = document.getElementById('section-inaccessible');
+                        var inaccessibleCards = document.getElementById('inaccessible-cards');
+
+                        access.accessible.forEach(function(mcp) {
+                            var card = document.querySelector('[data-mcp-id="' + mcp.mcpId + '"]');
+                            if (!card) return;
+                            sectionA.appendChild(card);
+                            card.style.display = '';
+                            if (STATUS_FETCHERS[mcp.mcpId]) STATUS_FETCHERS[mcp.mcpId]();
+                        });
+
+                        if (access.inaccessible.length > 0) {
+                            sectionB.style.display = '';
+                            access.inaccessible.forEach(function(mcp) {
+                                var card = document.querySelector('[data-mcp-id="' + mcp.mcpId + '"]');
+                                if (!card) return;
+                                card.classList.add('card-locked');
+                                var badge = document.createElement('span');
+                                badge.className = 'locked-badge';
+                                badge.textContent = 'No access';
+                                card.querySelector('.card-header-right').prepend(badge);
+                                inaccessibleCards.appendChild(card);
+                                card.style.display = '';
+                            });
+                        }
+                    })
+                    .catch(function() {
+                        // fallback: show all cards if access check fails
+                        document.querySelectorAll('[data-mcp-id]').forEach(function(card) { card.style.display = ''; });
+                        Object.values(STATUS_FETCHERS).forEach(function(fn) { fn(); });
+                    });
+            })
+            .catch(function() { window.location.href = '/login'; });
+    </script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+name: Deploy Akka Salesforce MCP Server on merge to main
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp-servers/akka-salesforce-mcp-server/**'
+      - '.github/workflows/deploy-akka-salesforce-mcp.yml'
+
+jobs:
+  deploy:
+    runs-on: Akka-Default-Latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for git-commit-id-plugin
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run akka/github-actions-scripts
+        uses: akka/github-actions-scripts/setup_global_resolver@main
+
+      - name: Build and push image
+        working-directory: mcp-servers/akka-salesforce-mcp-server
+        env:
+          CLOUDSMITH_MACHINE_USER: ${{ secrets.CLOUDSMITH_MACHINE_USER }}
+          CLOUDSMITH_MACHINE_PASSWORD: ${{ secrets.CLOUDSMITH_MACHINE_PASSWORD }}
+          CONTAINER_REGISTRY: ${{ secrets.CONTAINER_REGISTRY }}
+        run: |
+          echo "${CLOUDSMITH_MACHINE_PASSWORD}" | docker login "${CONTAINER_REGISTRY}" \
+            --username="${CLOUDSMITH_MACHINE_USER}" \
+            --password-stdin
+          mvn clean install -DskipTests
+          SHA=$(git rev-parse --short=7 HEAD)
+          docker tag akka-salesforce-mcp-server:${SHA} "${CONTAINER_REGISTRY}/mcp-gateway/akka-salesforce-mcp-server:${SHA}"
+          docker push "${CONTAINER_REGISTRY}/mcp-gateway/akka-salesforce-mcp-server:${SHA}"
+
+      - name: Install and authenticate Akka CLI
+        uses: akka/setup-akka-cli-action@v1.0.3
+        with:
+          token: ${{ secrets.AKKA_TOKEN }}
+          project-id: ${{ secrets.AKKA_PROJECT_ID }}
+          api-server-host: ${{ secrets.AKKA_API_HOST }}
+
+      - name: Deploy to Akka
+        id: deploy
+        env:
+          CONTAINER_REGISTRY: ${{ secrets.CONTAINER_REGISTRY }}
+        run: |
+          SHA=$(git rev-parse --short=7 HEAD)
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          akka service deploy akka-salesforce-mcp-server \
+            "${CONTAINER_REGISTRY}/mcp-gateway/akka-salesforce-mcp-server:${SHA}" \
+            --secret-env SALESFORCE_INSTANCE_URL=akka-salesforce-mcp/SALESFORCE_INSTANCE_URL \
+            --min-instances 1 \
+            --max-instances 1 \
+            --instance-type g1.general.x-small
+
+      - name: Wait for new version to go live
+        run: |
+          SHA="${{ steps.deploy.outputs.sha }}"
+          MAX_ATTEMPTS=8
+          SLEEP_SECONDS=60
+          echo "Waiting for service to reach Ready state..."
+          sleep 15
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            SERVICE_LINE=$(akka service list 2>&1 | grep "akka-salesforce-mcp-server")
+            echo "${SERVICE_LINE}"
+            if echo "$SERVICE_LINE" | grep -q "Ready"; then
+              echo "✓ Service is Ready (attempt ${i}/${MAX_ATTEMPTS})"
+              exit 0
+            fi
+            echo "Attempt ${i}/${MAX_ATTEMPTS}: not Ready yet, retrying in ${SLEEP_SECONDS}s..."
+            sleep $SLEEP_SECONDS
+          done
+          echo "✗ Service did not reach Ready state within $((MAX_ATTEMPTS * SLEEP_SECONDS / 60)) minutes"
+          akka service list
+          exit 1

@@ -1,0 +1,26 @@
+<svg width="420" height="120" viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- 120x120 Dark Navy Badge -->
+  <rect width="120" height="120" fill="#04061a" />
+  <g transform="translate(60, 65) scale(0.28)">
+    <!-- Blue Connection Lines -->
+    <path d="M-100 80 L0 0 L100 80" fill="none" stroke="#3b82f6" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+    <line x1="0" y1="0" x2="0" y2="-40" stroke="#3b82f6" stroke-width="24" stroke-linecap="round" />
+    
+    <!-- Bold Upward Arrow (White) -->
+    <path d="M0 -140 V40" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" />
+    <path d="M-45 -95 L0 -145 L45 -95" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Gold Nodes -->
+    <circle cx="-100" cy="80" r="32" fill="#fbbf24" />
+    <circle cx="100" cy="80" r="32" fill="#fbbf24" />
+    <circle cx="0" cy="0" r="36" fill="#fbbf24" />
+  </g>
+
+  <!-- Text Lockup: 16px gap from badge (starts at x=136) -->
+  <g transform="translate(136, 62)">
+    <!-- AKKA Wordmark: 52px Bold -->
+    <text font-family="Inter, system-ui, -apple-system, sans-serif" font-weight="900" font-size="52" fill="#04061a" letter-spacing="-2" dominant-baseline="auto">AKKA</text>
+    <!-- MCP Gateway: 26px Medium, 4px gap below -->
+    <text y="30" font-family="Inter, system-ui, -apple-system, sans-serif" font-weight="500" font-size="26" fill="#04061a" dominant-baseline="auto">MCP Gateway</text>
+  </g>
+</svg>

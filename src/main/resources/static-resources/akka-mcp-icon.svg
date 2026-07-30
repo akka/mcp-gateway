@@ -1,0 +1,19 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="#04061a" />
+  
+  <!-- Central Gateway/Network Symbol -->
+  <g transform="translate(256, 256)">
+    <!-- Thick Blue Connection Lines -->
+    <path d="M-100 80 L0 0 L100 80" fill="none" stroke="#3b82f6" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
+    <line x1="0" y1="0" x2="0" y2="-40" stroke="#3b82f6" stroke-width="20" stroke-linecap="round" />
+    
+    <!-- Bold Upward Arrow (White) -->
+    <path d="M0 -140 V40" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round" />
+    <path d="M-40 -100 L0 -145 L40 -100" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Large Gold Nodes -->
+    <circle cx="-100" cy="80" r="28" fill="#fbbf24" />
+    <circle cx="100" cy="80" r="28" fill="#fbbf24" />
+    <circle cx="0" cy="0" r="32" fill="#fbbf24" />
+  </g>
+</svg>

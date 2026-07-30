@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIGZpbGw9IiMwNDA2MWEiIC8+CiAgCiAgPCEtLSBDZW50cmFsIEdhdGV3YXkvTmV0d29yayBTeW1ib2wgLS0+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMjU2LCAyNTYpIj4KICAgIDwhLS0gVGhpY2sgQmx1ZSBDb25uZWN0aW9uIExpbmVzIC0tPgogICAgPHBhdGggZD0iTS0xMDAgODAgTDAgMCBMMTAwIDgwIiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgLz4KICAgIDxsaW5lIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSItNDAiIHN0cm9rZT0iIzNiODJmNiIgc3Ryb2tlLXdpZHRoPSIyMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAvPgogICAgCiAgICA8IS0tIEJvbGQgVXB3YXJkIEFycm93IChXaGl0ZSkgLS0+CiAgICA8cGF0aCBkPSJNMCAtMTQwIFY0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIC8+CiAgICA8cGF0aCBkPSJNLTQwIC0xMDAgTDAgLTE0NSBMNDAgLTEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIC8+CiAgICAKICAgIDwhLS0gTGFyZ2UgR29sZCBOb2RlcyAtLT4KICAgIDxjaXJjbGUgY3g9Ii0xMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIwIiBjeT0iMCIgcj0iMzIiIGZpbGw9IiNmYmJmMjQiIC8+CiAgPC9nPgo8L3N2Zz4=">
+    <title>Permissions — MCP Connections</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 640px; margin: 0 auto; padding: 0 24px; color: #1a1a1a; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #e8e8e8; margin-bottom: 36px; }
+        .top-bar-title { font-size: 1rem; font-weight: 600; color: #1a1a1a; }
+        .top-bar-logo { height: 36px; width: auto; display: block; }
+        .top-bar-links { display: flex; align-items: center; gap: 14px; font-size: 0.88rem; color: #555; }
+        .btn-link { padding: 6px 14px; border-radius: 6px; border: 1px solid #d0d0d0; background: #fff; color: #555; text-decoration: none; font-size: 0.85rem; }
+        .btn-link:hover { background: #f5f5f5; }
+        h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; margin-top: 0; }
+        p.subtitle { color: #666; margin-top: 0; margin-bottom: 32px; }
+        .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px 22px; margin-bottom: 20px; }
+        .card h2 { font-size: 1rem; font-weight: 600; margin: 0 0 16px; }
+        .field { margin-bottom: 14px; }
+        .field label { display: block; font-size: 0.78rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+        .field value { display: block; font-size: 0.95rem; }
+        .groups { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+        .tag { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.82rem; font-weight: 500; background: #e8f0fe; color: #1a56db; border: 1px solid #c3d5fb; }
+        .no-groups { font-size: 0.88rem; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <svg width="210" height="60" viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg" style="display:block"><rect width="120" height="120" fill="#04061a"/><g transform="translate(60,65) scale(0.28)"><path d="M-100 80 L0 0 L100 80" fill="none" stroke="#3b82f6" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/><line x1="0" y1="0" x2="0" y2="-40" stroke="#3b82f6" stroke-width="24" stroke-linecap="round"/><path d="M0 -140 V40" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/><path d="M-45 -95 L0 -145 L45 -95" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><circle cx="-100" cy="80" r="32" fill="#fbbf24"/><circle cx="100" cy="80" r="32" fill="#fbbf24"/><circle cx="0" cy="0" r="36" fill="#fbbf24"/></g><g transform="translate(136,62)"><text font-family="Inter,system-ui,-apple-system,sans-serif" font-weight="900" font-size="52" fill="#04061a" letter-spacing="-2" dominant-baseline="auto">AKKA</text><text y="30" font-family="Inter,system-ui,-apple-system,sans-serif" font-weight="500" font-size="26" fill="#04061a" dominant-baseline="auto">MCP Gateway</text></g></svg>
+        <div class="top-bar-links">
+            <a class="btn-link" href="/">Back</a>
+            <a class="btn-link" href="/auth/logout">Sign out</a>
+        </div>
+    </div>
+
+    <h1>Permissions</h1>
+    <p class="subtitle">Your current session and Okta group memberships.</p>
+
+    <div class="card">
+        <h2>Session</h2>
+        <div class="field">
+            <label>Email</label>
+            <value id="email">—</value>
+        </div>
+        <div class="field">
+            <label>Display name</label>
+            <value id="display-name">—</value>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Groups</h2>
+        <div id="groups-container"><span class="no-groups">Loading…</span></div>
+    </div>
+
+    <div class="card">
+        <h2>Applications</h2>
+        <div id="apps-container"><span class="no-groups">Loading…</span></div>
+    </div>
+
+    <script>
+        function escapeHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        fetch('/auth/me', { cache: 'no-store' })
+            .then(function(r) {
+                if (r.status === 401 || r.redirected) { window.location.href = '/login'; return null; }
+                return r.json();
+            })
+            .then(function(data) {
+                if (!data) return;
+                document.getElementById('email').textContent = data.email || '—';
+                document.getElementById('display-name').textContent = data.displayName || '—';
+
+                var groupsContainer = document.getElementById('groups-container');
+                if (!data.groups || data.groups.length === 0) {
+                    groupsContainer.innerHTML = '<span class="no-groups">No groups assigned.</span>';
+                } else {
+                    groupsContainer.innerHTML = '<div class="groups">' +
+                        data.groups.map(function(g) {
+                            return '<span class="tag">' + g + '</span>';
+                        }).join('') +
+                    '</div>';
+                }
+
+                var appsContainer = document.getElementById('apps-container');
+                if (!data.apps || data.apps.length === 0) {
+                    appsContainer.innerHTML = '<span class="no-groups">No applications assigned.</span>';
+                } else {
+                    appsContainer.innerHTML = '<div class="groups">' +
+                        data.apps.map(function(a) {
+                            var label = (a && a.label) ? a.label : (a && a.id) ? a.id : a;
+                            var id = (a && a.id) ? a.id : '';
+                            return '<span class="tag" title="' + escapeHtml(id) + '">' + escapeHtml(label) + '</span>';
+                        }).join('') +
+                    '</div>';
+                }
+            })
+            .catch(function() { window.location.href = '/login'; });
+    </script>
+</body>
+</html>

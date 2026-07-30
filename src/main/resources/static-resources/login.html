@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIGZpbGw9IiMwNDA2MWEiIC8+CiAgCiAgPCEtLSBDZW50cmFsIEdhdGV3YXkvTmV0d29yayBTeW1ib2wgLS0+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMjU2LCAyNTYpIj4KICAgIDwhLS0gVGhpY2sgQmx1ZSBDb25uZWN0aW9uIExpbmVzIC0tPgogICAgPHBhdGggZD0iTS0xMDAgODAgTDAgMCBMMTAwIDgwIiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgLz4KICAgIDxsaW5lIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSItNDAiIHN0cm9rZT0iIzNiODJmNiIgc3Ryb2tlLXdpZHRoPSIyMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAvPgogICAgCiAgICA8IS0tIEJvbGQgVXB3YXJkIEFycm93IChXaGl0ZSkgLS0+CiAgICA8cGF0aCBkPSJNMCAtMTQwIFY0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIC8+CiAgICA8cGF0aCBkPSJNLTQwIC0xMDAgTDAgLTE0NSBMNDAgLTEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIC8+CiAgICAKICAgIDwhLS0gTGFyZ2UgR29sZCBOb2RlcyAtLT4KICAgIDxjaXJjbGUgY3g9Ii0xMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIwIiBjeT0iMCIgcj0iMzIiIGZpbGw9IiNmYmJmMjQiIC8+CiAgPC9nPgo8L3N2Zz4=">
+    <title>Sign In — MCP Connections</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 400px; margin: 100px auto; padding: 0 24px; color: #1a1a1a; }
+        h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
+        p.subtitle { color: #666; margin-top: 0; margin-bottom: 32px; }
+        .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 28px 24px; }
+        label { display: block; font-size: 0.88rem; font-weight: 500; margin-bottom: 6px; }
+        input[type="email"] { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 0.95rem; outline: none; }
+        input[type="email"]:focus { border-color: #0070d2; box-shadow: 0 0 0 2px rgba(0,112,210,0.15); }
+        .btn-primary { display: block; width: 100%; padding: 10px; margin-top: 16px; background: #0070d2; color: white; border: none; border-radius: 6px; font-size: 0.92rem; font-weight: 500; cursor: pointer; }
+        .btn-primary:hover { background: #005fb2; }
+        .btn-primary:disabled { background: #aaa; cursor: default; }
+        .error { color: #c0392b; font-size: 0.83rem; margin-top: 6px; display: none; }
+        .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 20px; font-size: 0.88rem; font-weight: 500; background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>MCP Connections</h1>
+    <p class="subtitle">Sign in with your Okta account to continue.</p>
+
+    <div id="flash" style="display:none" class="flash"></div>
+    <div class="card">
+        <label for="email">Work email</label>
+        <input type="email" id="email" placeholder="you@example.com" autofocus>
+        <div id="email-error" class="error">Please enter a valid email address.</div>
+        <button class="btn-primary" id="submit-btn" onclick="handleSubmit()">Continue with Okta</button>
+    </div>
+
+    <script>
+        // Required email domain, resolved from server config (blank = no restriction).
+        var allowedEmailDomain = '';
+        fetch('/auth/login-config')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(cfg) {
+                if (cfg && cfg.allowedEmailDomain) {
+                    allowedEmailDomain = cfg.allowedEmailDomain.toLowerCase();
+                    document.getElementById('email').placeholder = 'you@' + allowedEmailDomain;
+                    document.getElementById('email-error').textContent =
+                        'Only @' + allowedEmailDomain + ' email addresses are allowed.';
+                }
+            })
+            .catch(function() { /* leave domain unrestricted client-side; server still enforces */ });
+
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('flash') === 'logout') {
+                var el = document.getElementById('flash');
+                el.textContent = 'You have been signed out.';
+                el.style.display = 'block';
+                history.replaceState(null, '', '/login');
+            }
+        })();
+
+        document.getElementById('email').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') handleSubmit();
+        });
+
+        function handleSubmit() {
+            var email = document.getElementById('email').value.trim();
+            var errorEl = document.getElementById('email-error');
+            var btn = document.getElementById('submit-btn');
+
+            if (allowedEmailDomain && !email.toLowerCase().endsWith('@' + allowedEmailDomain)) {
+                errorEl.style.display = 'block';
+                return;
+            }
+            if (!email) {
+                errorEl.style.display = 'block';
+                return;
+            }
+            errorEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Redirecting…';
+
+            fetch('/auth/initiate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email })
+            })
+            .then(function(r) {
+                console.debug('[auth/initiate] status=' + r.status + ' ok=' + r.ok);
+                if (!r.ok) {
+                    return r.text().then(function(text) {
+                        console.error('[auth/initiate] error body:', text);
+                        throw new Error(text || 'HTTP ' + r.status);
+                    });
+                }
+                return r.json();
+            })
+            .then(function(data) {
+                console.debug('[auth/initiate] response:', data);
+                if (data.redirectUrl) {
+                    window.location.href = data.redirectUrl;
+                } else {
+                    errorEl.textContent = 'Login failed. Please try again.';
+                    errorEl.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = 'Continue with Okta';
+                }
+            })
+            .catch(function(err) {
+                console.error('[auth/initiate] caught error:', err);
+                errorEl.textContent = 'An error occurred. Please try again.';
+                errorEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Continue with Okta';
+            });
+        }
+    </script>
+</body>
+</html>

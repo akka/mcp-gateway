@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIGZpbGw9IiMwNDA2MWEiIC8+CiAgCiAgPCEtLSBDZW50cmFsIEdhdGV3YXkvTmV0d29yayBTeW1ib2wgLS0+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMjU2LCAyNTYpIj4KICAgIDwhLS0gVGhpY2sgQmx1ZSBDb25uZWN0aW9uIExpbmVzIC0tPgogICAgPHBhdGggZD0iTS0xMDAgODAgTDAgMCBMMTAwIDgwIiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgLz4KICAgIDxsaW5lIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSItNDAiIHN0cm9rZT0iIzNiODJmNiIgc3Ryb2tlLXdpZHRoPSIyMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAvPgogICAgCiAgICA8IS0tIEJvbGQgVXB3YXJkIEFycm93IChXaGl0ZSkgLS0+CiAgICA8cGF0aCBkPSJNMCAtMTQwIFY0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIC8+CiAgICA8cGF0aCBkPSJNLTQwIC0xMDAgTDAgLTE0NSBMNDAgLTEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIC8+CiAgICAKICAgIDwhLS0gTGFyZ2UgR29sZCBOb2RlcyAtLT4KICAgIDxjaXJjbGUgY3g9Ii0xMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIwIiBjeT0iMCIgcj0iMzIiIGZpbGw9IiNmYmJmMjQiIC8+CiAgPC9nPgo8L3N2Zz4=">
+    <title>Interactions — MCP Connections</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 860px; margin: 0 auto; padding: 0 24px; color: #1a1a1a; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #e8e8e8; margin-bottom: 36px; }
+        .top-bar-title { font-size: 1rem; font-weight: 600; color: #1a1a1a; }
+        .top-bar-logo { height: 36px; width: auto; display: block; }
+        .top-bar-links { display: flex; align-items: center; gap: 14px; font-size: 0.88rem; }
+        .btn-link { padding: 6px 14px; border-radius: 6px; border: 1px solid #d0d0d0; background: #fff; color: #555; text-decoration: none; font-size: 0.85rem; }
+        .btn-link:hover { background: #f5f5f5; }
+        h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; margin-top: 0; }
+        p.subtitle { color: #666; margin-top: 0; margin-bottom: 24px; }
+        .search-bar { display: flex; gap: 10px; margin-bottom: 24px; }
+        .search-bar select { padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 0.9rem; background: #fff; }
+        .search-bar input { flex: 1; padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 0.9rem; outline: none; }
+        .search-bar input:focus { border-color: #0070d2; box-shadow: 0 0 0 2px rgba(0,112,210,0.15); }
+        .btn-search { padding: 8px 20px; background: #0070d2; color: white; border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; }
+        .btn-search:hover { background: #005fb2; }
+        .empty { color: #999; font-size: 0.9rem; padding: 24px 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th { text-align: left; padding: 8px 12px; font-size: 0.78rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #e8e8e8; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #fafafa; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 500; background: #e8f0fe; color: #1a56db; border: 1px solid #c3d5fb; }
+        .dir-req { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; background: #e8f4fd; color: #0c5460; border: 1px solid #b8daff; }
+        .dir-resp { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; background: #e8fdf0; color: #155724; border: 1px solid #b8dfc8; }
+        .dir-rejected { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; background: #fdecea; color: #922; border: 1px solid #f5c6c6; }
+        .escalation { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 500; }
+        .escalation-none { background: #f0f0f0; color: #888; }
+        .escalation-set { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+        .ts { color: #888; white-space: nowrap; }
+        .btn-view { padding: 3px 10px; border-radius: 5px; border: 1px solid #d0d0d0; background: #fff; color: #444; font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+        .btn-view:hover { background: #f0f0f0; }
+        .btn-page { padding: 5px 12px; border-radius: 6px; border: 1px solid #d0d0d0; background: #fff; color: #444; font-size: 0.85rem; cursor: pointer; }
+        .btn-page:hover:not(:disabled) { background: #f0f0f0; }
+        .btn-page:disabled { opacity: 0.4; cursor: default; }
+        .page-info { color: #666; }
+
+        /* Modal */
+        .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+        .modal-backdrop.open { display: flex; }
+        .modal { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); width: 580px; max-width: calc(100vw - 48px); max-height: 85vh; display: flex; flex-direction: column; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px 14px; border-bottom: 1px solid #e8e8e8; }
+        .modal-header h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+        .modal-close { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: #888; line-height: 1; padding: 0 2px; }
+        .modal-close:hover { color: #333; }
+        .modal-body { padding: 20px 22px; overflow-y: auto; }
+        .detail-row { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 0.88rem; }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label { width: 110px; flex-shrink: 0; color: #888; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding-top: 2px; }
+        .detail-value { flex: 1; word-break: break-all; }
+        .detail-pre { font-family: monospace; font-size: 0.78rem; background: #f7f7f7; border: 1px solid #e8e8e8; border-radius: 5px; padding: 10px 12px; white-space: pre-wrap; word-break: break-all; margin: 0; max-height: 280px; overflow-y: auto; }
+        .modal-footer { padding: 14px 22px; border-top: 1px solid #e8e8e8; display: flex; justify-content: flex-end; }
+        .btn-close-modal { padding: 7px 18px; border-radius: 6px; border: 1px solid #d0d0d0; background: #fff; color: #444; font-size: 0.88rem; cursor: pointer; }
+        .btn-close-modal:hover { background: #f5f5f5; }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <svg width="210" height="60" viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg" style="display:block"><rect width="120" height="120" fill="#04061a"/><g transform="translate(60,65) scale(0.28)"><path d="M-100 80 L0 0 L100 80" fill="none" stroke="#3b82f6" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/><line x1="0" y1="0" x2="0" y2="-40" stroke="#3b82f6" stroke-width="24" stroke-linecap="round"/><path d="M0 -140 V40" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/><path d="M-45 -95 L0 -145 L45 -95" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><circle cx="-100" cy="80" r="32" fill="#fbbf24"/><circle cx="100" cy="80" r="32" fill="#fbbf24"/><circle cx="0" cy="0" r="36" fill="#fbbf24"/></g><g transform="translate(136,62)"><text font-family="Inter,system-ui,-apple-system,sans-serif" font-weight="900" font-size="52" fill="#04061a" letter-spacing="-2" dominant-baseline="auto">AKKA</text><text y="30" font-family="Inter,system-ui,-apple-system,sans-serif" font-weight="500" font-size="26" fill="#04061a" dominant-baseline="auto">MCP Gateway</text></g></svg>
+        <div class="top-bar-links">
+            <a class="btn-link" href="/">Back</a>
+            <a class="btn-link" href="/auth/logout">Sign out</a>
+        </div>
+    </div>
+
+    <h1>Interactions</h1>
+    <p class="subtitle">Browse MCP tool calls by user or MCP server.</p>
+
+    <div class="search-bar">
+        <select id="search-type">
+            <option value="user">By user</option>
+            <option value="mcp">By MCP server</option>
+        </select>
+        <input type="text" id="search-input" list="search-suggestions" placeholder="Enter user email (leave blank for all)…">
+        <datalist id="search-suggestions"></datalist>
+        <button class="btn-search" onclick="search()">Search</button>
+    </div>
+
+    <div id="results"></div>
+    <div id="pagination" style="display:none; display:none; margin-top:16px; display:flex; align-items:center; gap:12px; font-size:0.88rem; color:#555;"></div>
+
+    <!-- Detail modal -->
+    <div class="modal-backdrop" id="modal" onclick="closeModalOnBackdrop(event)">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Interaction detail</h2>
+                <button class="modal-close" onclick="closeModal()">&#x2715;</button>
+            </div>
+            <div class="modal-body" id="modal-body"></div>
+            <div class="modal-footer">
+                <button class="btn-close-modal" onclick="closeModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var _userSuggestions = [];
+        var _mcpSuggestions = [];
+
+        function populateDatalist(items) {
+            var dl = document.getElementById('search-suggestions');
+            dl.innerHTML = '';
+            items.forEach(function(v) {
+                var opt = document.createElement('option');
+                opt.value = v;
+                dl.appendChild(opt);
+            });
+        }
+
+        fetch('/interactions/distinct-users', { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (data && data.items) {
+                    _userSuggestions = data.items;
+                    populateDatalist(_userSuggestions);
+                }
+            });
+
+        fetch('/interactions/distinct-mcps', { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (data && data.items) _mcpSuggestions = data.items;
+            });
+
+        fetch('/auth/me', { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                search(0);
+            });
+
+        document.getElementById('search-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') search();
+        });
+
+        document.getElementById('search-type').addEventListener('change', function() {
+            var type = this.value;
+            document.getElementById('search-input').placeholder =
+                type === 'user' ? 'Enter user email (leave blank for all)…' : 'Enter MCP server ID…';
+            document.getElementById('search-input').value = '';
+            populateDatalist(type === 'user' ? _userSuggestions : _mcpSuggestions);
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        var _currentPage = 0;
+        var _pageSize = 25;
+
+        function search(page) {
+            var type = document.getElementById('search-type').value;
+            var value = document.getElementById('search-input').value.trim();
+            if (!value && type !== 'user') return;
+
+            _currentPage = page || 0;
+
+            var base = type === 'user'
+                ? (value ? '/interactions/user/' + encodeURIComponent(value) : '/interactions/user')
+                : '/interactions/by-mcp/' + encodeURIComponent(value);
+            var url = base + '?page=' + _currentPage + '&pageSize=' + _pageSize;
+
+            var results = document.getElementById('results');
+            results.innerHTML = '<p class="empty">Loading…</p>';
+            document.getElementById('pagination').style.display = 'none';
+
+            fetch(url, { cache: 'no-store' })
+                .then(function(r) {
+                    if (r.status === 302 || r.redirected) { window.location.href = '/login'; return null; }
+                    return r.json();
+                })
+                .then(function(data) {
+                    if (!data) return;
+                    renderTable(data.interactions || []);
+                    renderPagination(data.totalCount || 0, data.page || 0, data.pageSize || _pageSize);
+                })
+                .catch(function() {
+                    results.innerHTML = '<p class="empty">Failed to load interactions.</p>';
+                });
+        }
+
+        function renderPagination(totalCount, page, pageSize) {
+            var el = document.getElementById('pagination');
+            if (totalCount === 0) { el.style.display = 'none'; return; }
+            var totalPages = Math.ceil(totalCount / pageSize);
+            var from = page * pageSize + 1;
+            var to = Math.min((page + 1) * pageSize, totalCount);
+            el.style.display = 'flex';
+            el.innerHTML =
+                '<button class="btn-page" onclick="search(' + (page - 1) + ')" ' + (page === 0 ? 'disabled' : '') + '>← Prev</button>' +
+                '<span class="page-info">Showing ' + from + '–' + to + ' of ' + totalCount + '</span>' +
+                '<button class="btn-page" onclick="search(' + (page + 1) + ')" ' + (page >= totalPages - 1 ? 'disabled' : '') + '>Next →</button>';
+        }
+
+        function renderTable(rows) {
+            var results = document.getElementById('results');
+            if (rows.length === 0) {
+                results.innerHTML = '<p class="empty">No interactions found.</p>';
+                return;
+            }
+            var html = '<table><thead><tr>' +
+                '<th>Time</th><th>Dir</th><th>Interaction ID</th><th>User</th><th>MCP</th><th>Tool</th><th>Escalation</th><th></th>' +
+                '</tr></thead><tbody>';
+            rows.forEach(function(r, i) {
+                var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
+                var escalation = (r.escalationStatus && r.escalationStatus.length > 0)
+                    ? '<span class="escalation escalation-set">' + esc(r.escalationStatus) + '</span>'
+                    : '<span class="escalation escalation-none">none</span>';
+                var dir = r.direction === 'resp'
+                    ? '<span class="dir-resp">resp</span>'
+                    : r.direction === 'write-rejected'
+                    ? '<span class="dir-rejected">write-rejected</span>'
+                    : '<span class="dir-req">req</span>';
+                html += '<tr>' +
+                    '<td class="ts">' + ts + '</td>' +
+                    '<td>' + dir + '</td>' +
+                    '<td><span class="tag">' + esc(r.interactionId.substring(0, 8)) + '…</span></td>' +
+                    '<td>' + esc(r.userId || '—') + '</td>' +
+                    '<td>' + esc(r.mcpId || '—') + '</td>' +
+                    '<td><strong>' + esc(r.tool || '—') + '</strong></td>' +
+                    '<td>' + escalation + '</td>' +
+                    '<td><button class="btn-view" onclick="showDetail(' + i + ')">View</button></td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table>';
+            results.innerHTML = html;
+            window._rows = rows;
+        }
+
+        function showDetail(i) {
+            var r = window._rows[i];
+            var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
+            var dir = r.direction === 'resp'
+                ? '<span class="dir-resp">resp</span>'
+                : r.direction === 'write-rejected'
+                ? '<span class="dir-rejected">write-rejected</span>'
+                : '<span class="dir-req">req</span>';
+            var escalation = (r.escalationStatus && r.escalationStatus.length > 0)
+                ? '<span class="escalation escalation-set">' + esc(r.escalationStatus) + '</span>'
+                : '<span class="escalation escalation-none">none</span>';
+
+            var paramsFormatted = '—';
+            if (r.params && r.params !== '{}') {
+                try {
+                    paramsFormatted = JSON.stringify(JSON.parse(r.params), null, 2);
+                } catch(e) {
+                    paramsFormatted = r.params;
+                }
+            }
+
+            document.getElementById('modal-body').innerHTML =
+                row('Interaction ID', '<code>' + esc(r.interactionId) + '</code>') +
+                row('Time',           ts) +
+                row('Direction',      dir) +
+                row('User',           esc(r.userId || '—')) +
+                row('MCP server',     esc(r.mcpId || '—')) +
+                row('Tool',           '<strong>' + esc(r.tool || '—') + '</strong>') +
+                row('Escalation',     escalation) +
+                '<div class="detail-row"><div class="detail-label">Params</div><div class="detail-value"><pre class="detail-pre">' + esc(paramsFormatted) + '</pre></div></div>';
+
+            document.getElementById('modal').classList.add('open');
+        }
+
+        function row(label, value) {
+            return '<div class="detail-row"><div class="detail-label">' + label + '</div><div class="detail-value">' + value + '</div></div>';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('open');
+        }
+
+        function closeModalOnBackdrop(e) {
+            if (e.target === document.getElementById('modal')) closeModal();
+        }
+
+        function esc(s) {
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+    </script>
+</body>
+</html>
