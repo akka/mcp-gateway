@@ -1,0 +1,48 @@
+name: Trigger internal deploy
+
+# On merge to main, tell the internal repo (which holds the deploy secrets and
+# self-hosted runner) to build & deploy the changed component(s). The internal
+# workflow checks out THIS public repo at the pushed SHA and deploys from it.
+# Nothing internal (registry hosts, Akka token, Cloudsmith creds) lives here —
+# only INTERNAL_DISPATCH_TOKEN, a token scoped to fire repository_dispatch on the
+# internal repo.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # need the previous commit to diff changed paths
+
+      - name: Determine changed components and dispatch per-service
+        env:
+          GH_TOKEN: ${{ secrets.INTERNAL_DISPATCH_TOKEN }}
+          TARGET: akka/mcp-gateway-internal
+          SHA: ${{ github.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BEFORE}" ] || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+          else
+            CHANGED=$(git diff --name-only "${BEFORE}" "${SHA}")
+          fi
+          echo "Changed files:"; echo "${CHANGED}"
+
+          dispatch() {
+            echo "→ dispatching ${1}"
+            printf '{"event_type":"%s","client_payload":{"sha":"%s"}}' "${1}" "${SHA}" \
+              | gh api "repos/${TARGET}/dispatches" --input -
+          }
+
+          # Gateway service: root src/** or root pom.xml
+          if echo "${CHANGED}" | grep -qE '^(src/|pom\.xml$)'; then dispatch deploy-mcp-gateway; fi
+          # Sub-servers: each under its own directory
+          if echo "${CHANGED}" | grep -q '^mcp-servers/okta-mcp-server/'; then dispatch deploy-okta-mcp; fi
+          if echo "${CHANGED}" | grep -q '^mcp-servers/slack-mcp-server/'; then dispatch deploy-slack-mcp; fi
+          if echo "${CHANGED}" | grep -q '^mcp-servers/akka-salesforce-mcp-server/'; then dispatch deploy-akka-salesforce-mcp; fi
