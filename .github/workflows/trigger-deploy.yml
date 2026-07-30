@@ -45,7 +45,10 @@ jobs:
             wf="$1"
             cid="dispatch-$(date -u +%s)-${RANDOM}"
             echo "::group::${wf} (cid=${cid})"
-            if ! gh workflow run "${wf}" -R "${TARGET}" -f sha="${SHA}" -f correlation="${cid}"; then
+            # REST workflow-dispatch (avoids gh's GraphQL default-branch lookup, which is
+            # subject to a separate, easily-exhausted rate limit).
+            if ! printf '{"ref":"main","inputs":{"sha":"%s","correlation":"%s"}}' "${SHA}" "${cid}" \
+                  | gh api -X POST "repos/${TARGET}/actions/workflows/${wf}/dispatches" --input - ; then
               echo "dispatch call failed for ${wf}"; FAILURES="${FAILURES} ${wf}"; echo "::endgroup::"; return
             fi
             run_id=""
