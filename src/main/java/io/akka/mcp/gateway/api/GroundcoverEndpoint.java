@@ -1,8 +1,6 @@
 package io.akka.mcp.gateway.api;
 
-import akka.http.javadsl.model.HttpResponse;
 import akka.javasdk.annotations.Acl;
-import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
 import com.typesafe.config.Config;
@@ -28,9 +26,6 @@ public class GroundcoverEndpoint extends AbstractDcrOAuthEndpoint {
         this.redirectUri = config.getString("groundcover.redirect-uri");
     }
 
-    @Get("/status")
-    public HttpResponse status() { return super.status(); }
-
     @Override
     protected ConnectionStatus fetchConnectionStatus(String email) {
         var connection = componentClient
@@ -52,9 +47,6 @@ public class GroundcoverEndpoint extends AbstractDcrOAuthEndpoint {
                 .invoke(new GroundcoverConnectionEntity.InitiateCommand(state, codeVerifier, clientId, tokenEndpoint));
     }
 
-    @Get("/connect")
-    public HttpResponse connect() { return super.connect(); }
-
     @Override
     protected Optional<PendingOAuthState> validatePendingState(String email, String state) {
         var connection = componentClient
@@ -73,9 +65,6 @@ public class GroundcoverEndpoint extends AbstractDcrOAuthEndpoint {
                 .invoke(new GroundcoverConnectionEntity.StoreTokenCommand(accessToken, refreshToken, expiresAt, state));
     }
 
-    @Get("/callback")
-    public HttpResponse callback() { return super.callback(); }
-
     @Override
     protected void clearConnection(String email) {
         componentClient
@@ -83,9 +72,6 @@ public class GroundcoverEndpoint extends AbstractDcrOAuthEndpoint {
                 .method(GroundcoverConnectionEntity::disconnect)
                 .invoke();
     }
-
-    @Get("/disconnect")
-    public HttpResponse disconnect() { return super.disconnect(); }
 
     @Override
     protected Optional<String> fetchAccessToken(String email) {
@@ -98,10 +84,4 @@ public class GroundcoverEndpoint extends AbstractDcrOAuthEndpoint {
 
     @Override
     protected RemoteMcpClient createMcpClient() { return new GroundcoverMcpClient(componentClient, mcpUrl, oktaAppId); }
-
-    @Get("/token")
-    public HttpResponse token() { return super.token(); }
-
-    @Get("/test")
-    public HttpResponse test() { return super.test(); }
 }

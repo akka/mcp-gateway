@@ -1,13 +1,8 @@
 package io.akka.mcp.gateway.api;
 
-import akka.http.javadsl.model.HttpResponse;
-import akka.http.javadsl.model.StatusCodes;
-import akka.http.javadsl.model.headers.Location;
 import akka.javasdk.annotations.Acl;
-import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
-import akka.javasdk.http.HttpResponses;
 import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.GoogleDriveConnectionEntity;
 import io.akka.mcp.gateway.application.GoogleDriveMcpClient;
@@ -38,9 +33,6 @@ public class GoogleDriveOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         this.googleDriveClientSecret = config.getString("google-drive.client-secret");
     }
 
-    @Get("/status")
-    public HttpResponse status() { return super.status(); }
-
     @Override
     protected ConnectionStatus fetchConnectionStatus(String email) {
         var connection = componentClient
@@ -62,9 +54,6 @@ public class GoogleDriveOAuthEndpoint extends AbstractStaticOAuthEndpoint {
                 .invoke(new GoogleDriveConnectionEntity.InitiateCommand(state, codeVerifier, clientId, tokenEndpoint));
     }
 
-    @Get("/connect")
-    public HttpResponse connect() { return super.connect(); }
-
     @Override protected String getRedirectUri() { return googleDriveRedirectUri; }
     @Override protected String getClientSecret() { return googleDriveClientSecret; }
 
@@ -81,16 +70,10 @@ public class GoogleDriveOAuthEndpoint extends AbstractStaticOAuthEndpoint {
                 .invoke(new GoogleDriveConnectionEntity.StoreTokenCommand(accessToken, refreshToken, expiresAt, state));
     }
 
-    @Get("/callback")
-    public HttpResponse callback() { return super.callback(); }
-
     @Override
     protected void clearConnection(String email) {
         componentClient.forKeyValueEntity(email).method(GoogleDriveConnectionEntity::disconnect).invoke();
     }
-
-    @Get("/disconnect")
-    public HttpResponse disconnect() { return super.disconnect(); }
 
     @Override
     protected Optional<String> fetchAccessToken(String email) {
@@ -98,12 +81,6 @@ public class GoogleDriveOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         return connection.isConnected() ? Optional.of(connection.accessToken()) : Optional.empty();
     }
 
-    @Get("/token")
-    public HttpResponse token() { return super.token(); }
-
     @Override protected String getProviderLabel() { return "Google Drive"; }
     @Override protected RemoteMcpClient createMcpClient() { return new GoogleDriveMcpClient(componentClient, googleDriveMcpUrl, oktaAppId); }
-
-    @Get("/test")
-    public HttpResponse test() { return super.test(); }
 }

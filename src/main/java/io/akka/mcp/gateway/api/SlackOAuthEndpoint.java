@@ -1,9 +1,7 @@
 package io.akka.mcp.gateway.api;
 
-import akka.http.javadsl.model.HttpResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import akka.javasdk.annotations.Acl;
-import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.HttpClientProvider;
@@ -38,9 +36,6 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         this.slackMcpUrl = config.getString("slack.mcp-url");
         this.oktaAppId = config.getString("slack.okta-app-id");
     }
-
-    @Get("/status")
-    public HttpResponse status() { return super.status(); }
 
     @Override
     protected ConnectionStatus fetchConnectionStatus(String email) {
@@ -86,9 +81,6 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         return tokenJson.path("authed_user").path("refresh_token").asText(null);
     }
 
-    @Get("/connect")
-    public HttpResponse connect() { return super.connect(); }
-
     @Override
     protected Optional<PendingOAuthState> validatePendingState(String email, String state) {
         var connection = componentClient.forKeyValueEntity(email)
@@ -105,18 +97,12 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
                 .invoke(new SlackConnectionEntity.StoreTokenCommand(accessToken, refreshToken, expiresAt, state));
     }
 
-    @Get("/callback")
-    public HttpResponse callback() { return super.callback(); }
-
     @Override
     protected void clearConnection(String email) {
         componentClient.forKeyValueEntity(email)
                 .method(SlackConnectionEntity::disconnect)
                 .invoke();
     }
-
-    @Get("/disconnect")
-    public HttpResponse disconnect() { return super.disconnect(); }
 
     @Override
     protected Optional<String> fetchAccessToken(String email) {
@@ -129,14 +115,8 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         }
     }
 
-    @Get("/token")
-    public HttpResponse token() { return super.token(); }
-
     @Override
     protected RemoteMcpClient createMcpClient() {
         return new SlackMcpClient(componentClient, httpClientProvider, slackMcpUrl, oktaAppId);
     }
-
-    @Get("/test")
-    public HttpResponse test() { return super.test(); }
 }

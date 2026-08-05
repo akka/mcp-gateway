@@ -4,6 +4,7 @@ import akka.http.javadsl.model.HttpResponse;
 import akka.http.javadsl.model.StatusCodes;
 import akka.http.javadsl.model.headers.Location;
 import java.util.UUID;
+import akka.javasdk.annotations.http.Get;
 import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.HttpResponses;
 import com.typesafe.config.Config;
@@ -70,6 +71,7 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
                         email, getProviderLabel().toLowerCase(), "oauth", Map.of(), direction, detail));
     }
 
+    @Get("/callback")
     public HttpResponse callback() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
@@ -137,6 +139,7 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
                 .addHeader(Location.create("/"));
     }
 
+    @Get("/connect")
     public HttpResponse connect() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
@@ -176,6 +179,7 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
         }
     }
 
+    @Get("/test")
     public HttpResponse test() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
@@ -183,6 +187,7 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
         return HttpResponses.ok(testMcpClient(createMcpClient(), session.email(), getProviderLabel()));
     }
 
+    @Get("/token")
     public HttpResponse token() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
@@ -191,6 +196,7 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
                 .orElse(HttpResponses.badRequest("Not connected"));
     }
 
+    @Get("/disconnect")
     public HttpResponse disconnect() {
         var session = requireSession();
         if (session == null) return redirectToLogin();

@@ -2,7 +2,6 @@ package io.akka.mcp.gateway.api;
 
 import akka.http.javadsl.model.HttpResponse;
 import akka.http.javadsl.model.StatusCodes;
-import akka.http.javadsl.model.headers.Location;
 import akka.javasdk.annotations.Acl;
 import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
@@ -59,9 +58,6 @@ public class SalesforceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         return new AkkaSalesforceMcpClient(componentClient, httpClientProvider, akkaSalesforceMcpUrl, akkaSalesforceOktaAppId);
     }
 
-    @Get("/status")
-    public HttpResponse status() { return super.status(); }
-
     @Override
     protected ConnectionStatus fetchConnectionStatus(String email) {
         var connection = componentClient
@@ -82,9 +78,6 @@ public class SalesforceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
                 .invoke(new SalesforceConnectionEntity.InitiateCommand(state, codeVerifier, clientId, tokenEndpoint));
     }
 
-    @Get("/connect")
-    public HttpResponse connect() { return super.connect(); }
-
     @Override protected String getRedirectUri() { return redirectUri; }
     @Override protected String getClientSecret() { return clientSecret; }
     @Override protected long getDefaultTokenExpiry() { return 7200; }
@@ -103,6 +96,7 @@ public class SalesforceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     }
 
     @Get("/callback")
+    @Override
     public HttpResponse callback() {
         var response = super.callback();
         // On a successful connect (the only FOUND redirect callback() emits), also warm the
@@ -121,9 +115,6 @@ public class SalesforceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         componentClient.forKeyValueEntity(email).method(SalesforceConnectionEntity::disconnect).invoke();
     }
 
-    @Get("/disconnect")
-    public HttpResponse disconnect() { return super.disconnect(); }
-
     @Override
     protected Optional<String> fetchAccessToken(String email) {
         try {
@@ -133,13 +124,11 @@ public class SalesforceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         }
     }
 
-    @Get("/token")
-    public HttpResponse token() { return super.token(); }
-
     @Override protected String getProviderLabel() { return "Salesforce"; }
     @Override protected RemoteMcpClient createMcpClient() { return new SalesforceMcpClient(componentClient, salesforceMcpUrl, oktaAppId); }
 
     @Get("/test")
+    @Override
     public HttpResponse test() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
