@@ -1,8 +1,9 @@
 package io.akka.mcp.gateway.api;
 
-import akka.http.javadsl.model.HttpResponse; 
+import akka.http.javadsl.model.HttpResponse;
 import akka.http.javadsl.model.StatusCodes;
 import akka.http.javadsl.model.headers.Location;
+import akka.javasdk.annotations.http.Get;
 import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.HttpResponses;
 import com.typesafe.config.Config;
@@ -101,6 +102,7 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
         return new ProbeResult(url, diagnostics);
     }
 
+    @Get("/connect")
     public HttpResponse connect() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
@@ -224,6 +226,7 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
         }
     }
 
+    @Get("/callback")
     public HttpResponse callback() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
@@ -290,6 +293,7 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
                 .addHeader(Location.create("/"));
     }
 
+    @Get("/disconnect")
     public HttpResponse disconnect() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
@@ -300,6 +304,7 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
                 .addHeader(Location.create("/"));
     }
 
+    @Get("/token")
     public HttpResponse token() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
@@ -308,6 +313,7 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
                 .orElse(HttpResponses.badRequest("Not connected"));
     }
 
+    @Get("/test")
     public HttpResponse test() {
         var session = requireSession();
         if (session == null) return redirectToLogin();

@@ -1,13 +1,8 @@
 package io.akka.mcp.gateway.api;
 
-import akka.http.javadsl.model.HttpResponse;
-import akka.http.javadsl.model.StatusCodes;
-import akka.http.javadsl.model.headers.Location;
 import akka.javasdk.annotations.Acl;
-import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
-import akka.javasdk.http.HttpResponses;
 import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
 import io.akka.mcp.gateway.application.ReoConnectionEntity;
@@ -30,9 +25,6 @@ public class ReoOAuthEndpoint extends AbstractDcrOAuthEndpoint {
         this.reoRedirectUri = config.getString("reo.redirect-uri");
     }
 
-    @Get("/status")
-    public HttpResponse status() { return super.status(); }
-
     @Override
     protected ConnectionStatus fetchConnectionStatus(String email) {
         var connection = componentClient
@@ -54,9 +46,6 @@ public class ReoOAuthEndpoint extends AbstractDcrOAuthEndpoint {
                 .invoke(new ReoConnectionEntity.InitiateCommand(state, codeVerifier, clientId, tokenEndpoint));
     }
 
-    @Get("/connect")
-    public HttpResponse connect() { return super.connect(); }
-
     @Override
     protected Optional<PendingOAuthState> validatePendingState(String email, String state) {
         var connection = componentClient.forKeyValueEntity(email).method(ReoConnectionEntity::getStatus).invoke();
@@ -70,16 +59,10 @@ public class ReoOAuthEndpoint extends AbstractDcrOAuthEndpoint {
                 .invoke(new ReoConnectionEntity.StoreTokenCommand(accessToken, refreshToken, expiresAt, state));
     }
 
-    @Get("/callback")
-    public HttpResponse callback() { return super.callback(); }
-
     @Override
     protected void clearConnection(String email) {
         componentClient.forKeyValueEntity(email).method(ReoConnectionEntity::disconnect).invoke();
     }
-
-    @Get("/disconnect")
-    public HttpResponse disconnect() { return super.disconnect(); }
 
     @Override
     protected Optional<String> fetchAccessToken(String email) {
@@ -89,10 +72,4 @@ public class ReoOAuthEndpoint extends AbstractDcrOAuthEndpoint {
 
     @Override
     protected RemoteMcpClient createMcpClient() { return new ReoMcpClient(componentClient, reoMcpUrl, oktaAppId); }
-
-    @Get("/token")
-    public HttpResponse token() { return super.token(); }
-
-    @Get("/test")
-    public HttpResponse test() { return super.test(); }
 }

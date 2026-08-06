@@ -1,8 +1,6 @@
 package io.akka.mcp.gateway.api;
 
-import akka.http.javadsl.model.HttpResponse;
 import akka.javasdk.annotations.Acl;
-import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
 import com.typesafe.config.Config;
@@ -35,9 +33,6 @@ public class GmailOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         this.oktaAppId = config.getString("gmail.okta-app-id");
     }
 
-    @Get("/status")
-    public HttpResponse status() { return super.status(); }
-
     @Override
     protected ConnectionStatus fetchConnectionStatus(String email) {
         var connection = componentClient
@@ -68,9 +63,6 @@ public class GmailOAuthEndpoint extends AbstractStaticOAuthEndpoint {
                 .invoke(new GmailConnectionEntity.InitiateCommand(state, codeVerifier, clientId));
     }
 
-    @Get("/connect")
-    public HttpResponse connect() { return super.connect(); }
-
     @Override
     protected Optional<PendingOAuthState> validatePendingState(String email, String state) {
         var connection = componentClient.forKeyValueEntity(email)
@@ -87,18 +79,12 @@ public class GmailOAuthEndpoint extends AbstractStaticOAuthEndpoint {
                 .invoke(new GmailConnectionEntity.StoreTokenCommand(accessToken, refreshToken, expiresAt, state));
     }
 
-    @Get("/callback")
-    public HttpResponse callback() { return super.callback(); }
-
     @Override
     protected void clearConnection(String email) {
         componentClient.forKeyValueEntity(email)
                 .method(GmailConnectionEntity::disconnect)
                 .invoke();
     }
-
-    @Get("/disconnect")
-    public HttpResponse disconnect() { return super.disconnect(); }
 
     @Override
     protected Optional<String> fetchAccessToken(String email) {
@@ -111,14 +97,8 @@ public class GmailOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         }
     }
 
-    @Get("/token")
-    public HttpResponse token() { return super.token(); }
-
     @Override
     protected RemoteMcpClient createMcpClient() {
         return new GmailMcpClient(componentClient, gmailMcpUrl, oktaAppId);
     }
-
-    @Get("/test")
-    public HttpResponse test() { return super.test(); }
 }

@@ -1,6 +1,7 @@
 package io.akka.mcp.gateway.api;
 
 import akka.http.javadsl.model.HttpResponse;
+import akka.javasdk.annotations.http.Get;
 import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.HttpResponses;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,6 +53,7 @@ public abstract class AbstractMcpConnectionEndpoint extends AbstractProtectedEnd
 
     protected abstract ConnectionStatus fetchConnectionStatus(String email);
 
+    @Get("/status")
     public HttpResponse status() {
         if (requireSession() == null) return redirectToLogin();
         return HttpResponses.ok(fetchConnectionStatus(requireSession().email()));

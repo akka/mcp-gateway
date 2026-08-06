@@ -1,8 +1,6 @@
 package io.akka.mcp.gateway.api;
 
-import akka.http.javadsl.model.HttpResponse;
 import akka.javasdk.annotations.Acl;
-import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
 import com.typesafe.config.Config;
@@ -35,9 +33,6 @@ public class GoogleCalendarOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         this.oktaAppId = config.getString("google-calendar.okta-app-id");
     }
 
-    @Get("/status")
-    public HttpResponse status() { return super.status(); }
-
     @Override
     protected ConnectionStatus fetchConnectionStatus(String email) {
         var connection = componentClient
@@ -67,9 +62,6 @@ public class GoogleCalendarOAuthEndpoint extends AbstractStaticOAuthEndpoint {
                 .invoke(new GoogleCalendarConnectionEntity.InitiateCommand(state, codeVerifier, clientId));
     }
 
-    @Get("/connect")
-    public HttpResponse connect() { return super.connect(); }
-
     @Override
     protected Optional<PendingOAuthState> validatePendingState(String email, String state) {
         var connection = componentClient.forKeyValueEntity(email)
@@ -86,18 +78,12 @@ public class GoogleCalendarOAuthEndpoint extends AbstractStaticOAuthEndpoint {
                 .invoke(new GoogleCalendarConnectionEntity.StoreTokenCommand(accessToken, refreshToken, expiresAt, state));
     }
 
-    @Get("/callback")
-    public HttpResponse callback() { return super.callback(); }
-
     @Override
     protected void clearConnection(String email) {
         componentClient.forKeyValueEntity(email)
                 .method(GoogleCalendarConnectionEntity::disconnect)
                 .invoke();
     }
-
-    @Get("/disconnect")
-    public HttpResponse disconnect() { return super.disconnect(); }
 
     @Override
     protected Optional<String> fetchAccessToken(String email) {
@@ -110,14 +96,8 @@ public class GoogleCalendarOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         }
     }
 
-    @Get("/token")
-    public HttpResponse token() { return super.token(); }
-
     @Override
     protected RemoteMcpClient createMcpClient() {
         return new GoogleCalendarMcpClient(componentClient, calendarMcpUrl, oktaAppId);
     }
-
-    @Get("/test")
-    public HttpResponse test() { return super.test(); }
 }

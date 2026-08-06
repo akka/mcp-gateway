@@ -1,13 +1,8 @@
 package io.akka.mcp.gateway.api;
 
-import akka.http.javadsl.model.HttpResponse;
-import akka.http.javadsl.model.StatusCodes;
-import akka.http.javadsl.model.headers.Location;
 import akka.javasdk.annotations.Acl;
-import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
-import akka.javasdk.http.HttpResponses;
 import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
 import io.akka.mcp.gateway.application.ZohoConnectionEntity;
@@ -32,9 +27,6 @@ public class ZohoDeskOAuthEndpoint extends AbstractDcrOAuthEndpoint {
         this.zohoRedirectUri = config.getString("zoho.redirect-uri");
     }
 
-    @Get("/status")
-    public HttpResponse status() { return super.status(); }
-
     @Override
     protected ConnectionStatus fetchConnectionStatus(String email) {
         var connection = componentClient
@@ -56,9 +48,6 @@ public class ZohoDeskOAuthEndpoint extends AbstractDcrOAuthEndpoint {
                 .invoke(new ZohoConnectionEntity.InitiateCommand(state, codeVerifier, clientId, tokenEndpoint));
     }
 
-    @Get("/connect")
-    public HttpResponse connect() { return super.connect(); }
-
     @Override
     protected Optional<PendingOAuthState> validatePendingState(String email, String state) {
         var connection = componentClient.forKeyValueEntity(email).method(ZohoConnectionEntity::getStatus).invoke();
@@ -72,16 +61,10 @@ public class ZohoDeskOAuthEndpoint extends AbstractDcrOAuthEndpoint {
                 .invoke(new ZohoConnectionEntity.StoreTokenCommand(accessToken, refreshToken, expiresAt, state));
     }
 
-    @Get("/callback")
-    public HttpResponse callback() { return super.callback(); }
-
     @Override
     protected void clearConnection(String email) {
         componentClient.forKeyValueEntity(email).method(ZohoConnectionEntity::disconnect).invoke();
     }
-
-    @Get("/disconnect")
-    public HttpResponse disconnect() { return super.disconnect(); }
 
     @Override
     protected Optional<String> fetchAccessToken(String email) {
@@ -91,10 +74,4 @@ public class ZohoDeskOAuthEndpoint extends AbstractDcrOAuthEndpoint {
 
     @Override
     protected RemoteMcpClient createMcpClient() { return new ZohoMcpClient(componentClient, zohoMcpUrl, oktaAppId); }
-
-    @Get("/token")
-    public HttpResponse token() { return super.token(); }
-
-    @Get("/test")
-    public HttpResponse test() { return super.test(); }
 }
