@@ -18,11 +18,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * CRITICAL-1 (SECURITY_REVIEW.md): the Okta app assignment gate ({@code GET /mcp/access}) was
- * dashboard-only cosmetics — {@code POST /mcp} (tools/list, tools/call) never evaluated
- * {@code session.hasApp(...)}, so any {@code mcp-gateway-reader} could enumerate and call
- * {@code okta_*} tools without the "Okta MCP Admin" app assigned, because {@code OktaMcpClient}
- * authenticates with a single org-wide token and has no other way to gate access per-user.
+ * The Okta app assignment gate ({@code GET /mcp/access}) was dashboard-only cosmetics —
+ * {@code POST /mcp} (tools/list, tools/call) never evaluated {@code session.hasApp(...)}, so any
+ * {@code mcp-gateway-reader} could enumerate and call {@code okta_*} tools without the "Okta MCP
+ * Admin" app assigned, because {@code OktaMcpClient} authenticates with a single org-wide token
+ * and has no other way to gate access per-user.
  */
 public class AkkaMcpGatewayOktaAppGatingIntegrationTest extends TestKitSupport {
 
