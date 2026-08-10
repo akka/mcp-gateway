@@ -147,7 +147,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         String responseJson = switch (method) {
             case "initialize" -> handleInitialize(id);
             case "notifications/initialized" -> "{}";
-            case "tools/list" -> handleToolsList(id, session.email());
+            case "tools/list" -> handleToolsList(id, session);
             case "tools/call" -> handleToolsCall(id, params, session); // logs its own req+resp
             case "ping" -> responseJson(id, Map.of());
             default -> {
@@ -182,7 +182,8 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         return responseJson(id, result);
     }
 
-    private String handleToolsList(Long id, String userId) {
+    private String handleToolsList(Long id, UserSession session) {
+        String userId = session.email();
         log.info("MCP tools/list: aggregating from {} clients", clients.size());
         List<Map<String, Object>> allTools = new ArrayList<>();
 
@@ -203,6 +204,15 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         for (var client : clients) {
             if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
             var clientName = client.getClass().getSimpleName();
+            // Okta app assignment is a real authorisation boundary for clients backed by a
+            // shared/org-wide credential (e.g. okta-admin): isConnected() alone can't gate them
+            // per-user. Match the check GET /access already applies, and hide the tools
+            // entirely — no live fetch, no cached fallback — for a user missing the app.
+            var requiredAppId = client.getRequiredOktaAppId();
+            if (!requiredAppId.isBlank() && !session.hasApp(requiredAppId)) {
+                log.info("MCP tools/list: {} app not assigned to user {} — hiding tools", clientName, userId);
+                continue;
+            }
             try {
                 if (client.isConnected(userId)) {
                     log.info("MCP tools/list: fetching live tools from {}", clientName);
@@ -312,6 +322,22 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                     .method(McpInteractionEntity::record)
                     .invoke(new McpInteractionEntity.RecordCommand(
                             userEmail, "proxy", toolName, Map.of("error", "no-client-for-tool"), "resp"));
+            return errorJson(id, -32601, "No MCP client can handle tool: " + toolName);
+        }
+
+        // Okta app assignment is a real authorisation boundary for clients backed by a
+        // shared/org-wide credential (e.g. okta-admin), where isConnected() can't gate per-user.
+        // Match the check GET /access already applies, and enforce it here too — this is the
+        // actual data path. Fail the same way as "no client can handle" to avoid disclosing
+        // more than the dashboard already does.
+        var requiredAppId = client.getRequiredOktaAppId();
+        if (!requiredAppId.isBlank() && !session.hasApp(requiredAppId)) {
+            log.warn("tools/call: {} app not assigned for user {}, tool={}", client.getMcpName(), userEmail, toolName);
+            componentClient
+                    .forEventSourcedEntity(UUID.randomUUID().toString())
+                    .method(McpInteractionEntity::record)
+                    .invoke(new McpInteractionEntity.RecordCommand(
+                            userEmail, client.getMcpId(), toolName, Map.of("error", "app-not-assigned"), "resp"));
             return errorJson(id, -32601, "No MCP client can handle tool: " + toolName);
         }
 
