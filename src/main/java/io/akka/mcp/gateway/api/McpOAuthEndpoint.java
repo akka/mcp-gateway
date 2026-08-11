@@ -4,6 +4,7 @@ import akka.http.javadsl.model.ContentTypes;
 import akka.http.javadsl.model.HttpResponse;
 import akka.http.javadsl.model.StatusCodes;
 import akka.http.javadsl.model.headers.Location;
+import akka.http.javadsl.model.headers.RawHeader;
 import akka.javasdk.annotations.Acl;
 import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
@@ -12,12 +13,14 @@ import akka.javasdk.client.ComponentClient;
 import com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.OAuthAuthorizationCodeEntity;
 import io.akka.mcp.gateway.application.OAuthClientEntity;
 import io.akka.mcp.gateway.application.OAuthPendingAuthorizationEntity;
 import io.akka.mcp.gateway.application.OAuthRefreshTokenEntity;
 import io.akka.mcp.gateway.application.OidcPendingLoginEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
+import io.akka.mcp.gateway.domain.UserSession;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -47,12 +50,16 @@ import java.util.UUID;
  *   4. {@code POST /oauth2/consent} — issues an authorization code stored in
  *      {@link io.akka.mcp.gateway.application.OAuthAuthorizationCodeEntity} and redirects to the client.
  *   5. {@code POST /oauth2/token} — Token exchange: validates the auth code + PKCE verifier and
- *      returns the user's session token as a Bearer access token, plus a refresh token stored in
+ *      mints a fresh {@link io.akka.mcp.gateway.application.McpAccessTokenEntity} as the Bearer
+ *      access token, plus a refresh token stored in
  *      {@link io.akka.mcp.gateway.application.OAuthRefreshTokenEntity}. Supports {@code refresh_token}
  *      grant for silent renewal (token rotation).
  *
- * The issued access token is the user's {@link io.akka.mcp.gateway.application.UserSessionEntity} token,
- * so all subsequent MCP calls authenticated with it go through the same session as the browser.
+ * The issued access token is a distinct credential from the user's browser
+ * {@link io.akka.mcp.gateway.application.UserSessionEntity} session — deliberately so. It carries
+ * the same authorization claims (email, groups, app assignments) but lives in a separate value
+ * space and is only ever accepted by the MCP JSON-RPC endpoint
+ * ({@code AbstractProtectedEndpoint#requireMcpSession()}), never as a {@code SESSION} cookie.
  */
 @HttpEndpoint("/oauth2")
 @Acl(allow = @Acl.Matcher(principal = Acl.Principal.INTERNET))
@@ -66,6 +73,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
     private final String oktaRedirectUri;
     private final String oktaBaseUrl;
     private final String oktaApiToken;
+    private final List<String> redirectHostAllowlist;
 
     public McpOAuthEndpoint(ComponentClient componentClient, Config config) {
         super(componentClient, config);
@@ -73,6 +81,11 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         this.oktaClientId = config.getString("okta.client-id");
         this.oktaRedirectUri = config.getString("okta.redirect-uri");
         this.oktaApiToken = config.getString("okta.api-token");
+        this.redirectHostAllowlist = java.util.Arrays.stream(config.getString("mcp.oauth.redirect-host-allowlist").split(","))
+                .map(String::trim)
+                .map(s -> s.toLowerCase(java.util.Locale.ROOT))
+                .filter(s -> !s.isBlank())
+                .toList();
 
         // Discover Okta authorization endpoint from issuer URL
         String issuerUrl = config.getString("okta.issuer-url");
@@ -202,9 +215,19 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                             "{\"error\":\"invalid_request\",\"error_description\":\"redirect_uris is required\"}");
         }
 
+        String redirectUri = req.redirect_uris().get(0);
+        if (!isAllowedRedirectUri(redirectUri)) {
+            return HttpResponse.create()
+                    .withStatus(StatusCodes.BAD_REQUEST)
+                    .withEntity(ContentTypes.APPLICATION_JSON,
+                            "{\"error\":\"invalid_redirect_uri\",\"error_description\":"
+                                    + "\"redirect_uris must be a loopback http URI (127.0.0.1/localhost) or an https URI"
+                                    + (redirectHostAllowlist.isEmpty() ? "" : " on an allowed host")
+                                    + "\"}");
+        }
+
         String clientId = UUID.randomUUID().toString();
         String clientName = req.client_name() != null ? req.client_name() : "MCP Client";
-        String redirectUri = req.redirect_uris().get(0);
 
         componentClient
                 .forKeyValueEntity(clientId)
@@ -333,6 +356,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         String scopeLabel = "mcp:read".equals(pending.scope())
                 ? "read access to support tickets and CRM data"
                 : pending.scope();
+        String redirectHost = redirectUriHost(pending.redirectUri());
 
         String html = """
                 <!DOCTYPE html>
@@ -371,6 +395,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                       <p>&#10003;&nbsp; <strong>%s</strong></p>
                     </div>
                     <p class="user">Signed in as <strong>%s</strong></p>
+                    <p class="user">Access will be sent to <strong>%s</strong></p>
                     <form method="POST" action="/oauth2/consent">
                       <input type="hidden" name="oauth_state" value="%s">
                       <div class="buttons">
@@ -385,10 +410,13 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                 escapeHtml(clientName),
                 escapeHtml(scopeLabel),
                 escapeHtml(session.email()),
+                escapeHtml(redirectHost),
                 escapeHtml(oauthState));
 
         return HttpResponse.create()
                 .withStatus(StatusCodes.OK)
+                .addHeader(RawHeader.create("Content-Security-Policy", "frame-ancestors 'none'"))
+                .addHeader(RawHeader.create("X-Frame-Options", "DENY"))
                 .withEntity(ContentTypes.TEXT_HTML_UTF8, html);
     }
 
@@ -514,11 +542,19 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         var userSession = componentClient.forKeyValueEntity(authCode.sessionToken())
                 .method(UserSessionEntity::getSession).invoke();
 
-        long expiresIn = ACCESS_TOKEN_TTL_SECONDS;
-        if (!userSession.isEmpty() && !userSession.isExpired()) {
-            long remaining = userSession.expiresAt().getEpochSecond() - Instant.now().getEpochSecond();
-            if (remaining > 0) expiresIn = remaining;
+        // The browser session backing this auth code is gone (expired or logged out) between
+        // consent and redemption — refuse rather than mint a token for an unknown identity.
+        if (userSession.isEmpty() || userSession.isExpired()) {
+            return tokenError(StatusCodes.BAD_REQUEST, "invalid_grant", "Session is no longer valid");
         }
+
+        long expiresIn = ACCESS_TOKEN_TTL_SECONDS;
+        long remaining = userSession.expiresAt().getEpochSecond() - Instant.now().getEpochSecond();
+        if (remaining > 0) expiresIn = remaining;
+
+        String accessToken = issueMcpAccessToken(
+                userSession.email(), userSession.displayName(), userSession.groups(), userSession.apps(),
+                clientId, Instant.now().plusSeconds(expiresIn));
 
         String refreshToken = issueRefreshToken(
                 userSession.isEmpty() ? "" : userSession.email(),
@@ -531,7 +567,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         return HttpResponse.create()
                 .withStatus(StatusCodes.OK)
                 .withEntity(ContentTypes.APPLICATION_JSON,
-                        toJson(new TokenResponse(authCode.sessionToken(), "Bearer", expiresIn, refreshToken)));
+                        toJson(new TokenResponse(accessToken, "Bearer", expiresIn, refreshToken)));
     }
 
     private HttpResponse handleRefreshTokenGrant(Map<String, String> form) {
@@ -566,17 +602,10 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         List<io.akka.mcp.gateway.domain.UserSession.App> currentApps =
                 fetchCurrentApps(storedToken.userId(), storedToken.apps());
 
-        // Create a new session for the user
-        String newSessionToken = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(newSessionToken)
-                .method(UserSessionEntity::create)
-                .invoke(new UserSessionEntity.CreateCommand(
-                        storedToken.userId(),
-                        storedToken.displayName(),
-                        Instant.now().plusSeconds(ACCESS_TOKEN_TTL_SECONDS),
-                        currentGroups,
-                        storedToken.idToken(),
-                        currentApps));
+        // Issue a new MCP access token for the user (not a browser session — see McpAccessToken).
+        String newAccessToken = issueMcpAccessToken(
+                storedToken.userId(), storedToken.displayName(), currentGroups, currentApps,
+                clientId, Instant.now().plusSeconds(ACCESS_TOKEN_TTL_SECONDS));
 
         // Issue a new refresh token
         String newRefreshToken = issueRefreshToken(
@@ -586,7 +615,17 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         return HttpResponse.create()
                 .withStatus(StatusCodes.OK)
                 .withEntity(ContentTypes.APPLICATION_JSON,
-                        toJson(new TokenResponse(newSessionToken, "Bearer", ACCESS_TOKEN_TTL_SECONDS, newRefreshToken)));
+                        toJson(new TokenResponse(newAccessToken, "Bearer", ACCESS_TOKEN_TTL_SECONDS, newRefreshToken)));
+    }
+
+    private String issueMcpAccessToken(
+            String userId, String displayName, List<String> groups, List<UserSession.App> apps,
+            String clientId, Instant expiresAt) {
+        String token = UUID.randomUUID().toString();
+        componentClient.forKeyValueEntity(token)
+                .method(McpAccessTokenEntity::create)
+                .invoke(new McpAccessTokenEntity.CreateCommand(userId, displayName, groups, apps, clientId, expiresAt));
+        return token;
     }
 
     private String issueRefreshToken(
@@ -603,6 +642,43 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private static final java.util.Set<String> LOOPBACK_HOSTS = java.util.Set.of("127.0.0.1", "localhost", "::1", "[::1]");
+
+    /**
+     * Registration-time policy for {@code redirect_uris} (RFC 7591). Rejects anything that isn't
+     * an http loopback URI (the RFC 8252 native-app pattern used by CLI/desktop MCP clients like
+     * Claude Code) or an https URI, optionally restricted to an operator-configured host
+     * allowlist. This closes the open-DCR leg of the account-takeover chain: previously any
+     * scheme/host was stored verbatim with no check at all.
+     */
+    private boolean isAllowedRedirectUri(String redirectUri) {
+        if (redirectUri == null || redirectUri.isBlank()) return false;
+        java.net.URI uri;
+        try {
+            uri = new java.net.URI(redirectUri);
+        } catch (Exception e) {
+            return false;
+        }
+
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        if (scheme == null || host == null || host.isBlank()) return false;
+        // Reject embedded credentials (e.g. https://trusted.com@evil.example/) — a classic
+        // authority-confusion trick to make a URI look safe to a human reviewer.
+        if (uri.getRawUserInfo() != null) return false;
+
+        String lowerScheme = scheme.toLowerCase(java.util.Locale.ROOT);
+        String lowerHost = host.toLowerCase(java.util.Locale.ROOT);
+
+        if ("http".equals(lowerScheme)) {
+            return LOOPBACK_HOSTS.contains(lowerHost);
+        }
+        if ("https".equals(lowerScheme)) {
+            return redirectHostAllowlist.isEmpty() || redirectHostAllowlist.contains(lowerHost);
+        }
+        return false;
+    }
 
     static String pkceChallenge(String verifier) {
         try {
@@ -638,6 +714,17 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
+    /** Host portion of a redirect_uri, for display on the consent screen; falls back to the raw
+     * value if it can't be parsed so the user still sees something rather than a blank field. */
+    private static String redirectUriHost(String redirectUri) {
+        try {
+            String host = new java.net.URI(redirectUri).getHost();
+            return host != null ? host : redirectUri;
+        } catch (Exception e) {
+            return redirectUri;
+        }
+    }
+
     private static String escapeHtml(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -657,6 +744,8 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                 """.formatted(escapeHtml(message));
         return HttpResponse.create()
                 .withStatus(StatusCodes.BAD_REQUEST)
+                .addHeader(RawHeader.create("Content-Security-Policy", "frame-ancestors 'none'"))
+                .addHeader(RawHeader.create("X-Frame-Options", "DENY"))
                 .withEntity(ContentTypes.TEXT_HTML_UTF8, html);
     }
 
