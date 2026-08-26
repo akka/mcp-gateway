@@ -160,10 +160,6 @@ Because Drive, Gmail, and Calendar share one Google application, being assigned 
 
 Group membership and app assignment establish that you are *allowed* to use a system. They do not connect it. Each user still signs in to each system once through the dashboard, and the gateway acts strictly as that person — never with a shared or elevated account. So a colleague who can reach Salesforce sees only the Salesforce records their own Salesforce login permits.
 
-### A gap worth knowing about
-
-Today the Okta application assignment is enforced on the dashboard, but **not** on the MCP path itself. A user who has `mcp-gateway-reader` or `mcp-gateway-writer`, and who has personally connected a system, can call that system's tools through their assistant even if the matching Okta application was never assigned to them. The system's own permissions still apply, and every call is logged, so this is a matter of the gateway not enforcing an intended boundary rather than data being exposed to someone the underlying system would refuse. If you rely on app assignment as a hard boundary, treat it as advisory until this is closed.
-
 ## Questions or problems
 
 If a system will not connect, an answer looks wrong, or you think you should have access to something you do not, reach out to the team that maintains the gateway. Mentioning what you asked for and roughly when helps them find the matching entry in the log.
