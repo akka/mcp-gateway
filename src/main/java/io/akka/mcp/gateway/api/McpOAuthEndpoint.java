@@ -600,7 +600,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
      * allowlist. This closes the open-DCR leg of the account-takeover chain: previously any
      * scheme/host was stored verbatim with no check at all.
      */
-    private boolean isAllowedRedirectUri(String redirectUri) {
+    boolean isAllowedRedirectUri(String redirectUri) {
         if (redirectUri == null || redirectUri.isBlank()) return false;
         java.net.URI uri;
         try {

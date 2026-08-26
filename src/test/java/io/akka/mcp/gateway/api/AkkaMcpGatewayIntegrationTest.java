@@ -2,6 +2,7 @@ package io.akka.mcp.gateway.api;
 
 import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKitSupport;
+import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
@@ -18,7 +19,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class AkkaMcpGatewayIntegrationTest extends TestKitSupport {
 
-    private String createSession(List<String> groups) {
+    /** An MCP client's Bearer token — what {@code POST /mcp} actually accepts. */
+    private String createMcpToken(List<String> groups) {
+        var token = UUID.randomUUID().toString();
+        componentClient.forKeyValueEntity(token)
+                .method(McpAccessTokenEntity::create)
+                .invoke(new McpAccessTokenEntity.CreateCommand(
+                        "user@lightbend.com", "User", groups, List.of(), "client-1", Instant.now().plusSeconds(3600)));
+        return token;
+    }
+
+    /** A browser's {@code SESSION} cookie value — must never work as an MCP Bearer token. */
+    private String createBrowserSession(List<String> groups) {
         var token = UUID.randomUUID().toString();
         componentClient.forKeyValueEntity(token)
                 .method(UserSessionEntity::create)
@@ -34,7 +46,7 @@ public class AkkaMcpGatewayIntegrationTest extends TestKitSupport {
      */
     @Test
     public void toolsList_withNoConnectedServices_stillReturnsHowToTools() throws Exception {
-        var token = createSession(List.of());
+        var token = createMcpToken(List.of());
         Map<String, Object> request = Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list");
 
         var response = httpClient.POST("/mcp")
@@ -69,7 +81,7 @@ public class AkkaMcpGatewayIntegrationTest extends TestKitSupport {
                 .method(McpRegistryEntity::register)
                 .invoke(new McpConfig("zoho-desk", "Zoho Desk", List.of(cachedTool)));
 
-        var token = createSession(List.of());
+        var token = createMcpToken(List.of());
         Map<String, Object> request = Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list");
 
         var response = httpClient.POST("/mcp")
@@ -91,6 +103,26 @@ public class AkkaMcpGatewayIntegrationTest extends TestKitSupport {
         // Unauthenticated MCP calls are rejected with 401, never a tool list.
         var ex = assertThrows(Exception.class, () ->
                 httpClient.POST("/mcp")
+                        .withRequestBody(request)
+                        .responseBodyAs(String.class)
+                        .invoke());
+        assertThat(ex.getMessage()).contains("401");
+    }
+
+    /**
+     * The crux of the account-takeover fix: a browser {@code SESSION} cookie must never work as
+     * an MCP Bearer token, even though both ultimately resolve to a {@link
+     * io.akka.mcp.gateway.domain.UserSession}-shaped identity. {@code POST /mcp} only calls
+     * {@code requireMcpSession()}, which looks at the {@code Authorization} header only.
+     */
+    @Test
+    public void toolsList_withBrowserSessionCookieInsteadOfBearerToken_isRejected() {
+        var sessionCookie = createBrowserSession(List.of());
+        Map<String, Object> request = Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list");
+
+        var ex = assertThrows(Exception.class, () ->
+                httpClient.POST("/mcp")
+                        .addHeader("Cookie", "SESSION=" + sessionCookie)
                         .withRequestBody(request)
                         .responseBodyAs(String.class)
                         .invoke());
