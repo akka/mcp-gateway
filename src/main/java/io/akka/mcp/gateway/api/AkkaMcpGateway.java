@@ -112,9 +112,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         var inaccessible = new ArrayList<McpAccessEntry>();
         for (var client : clients) {
             if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
-            var required = client.getRequiredOktaAppId();
-            // match on the stable Okta app id, never the display label
-            var hasAccess = required.isBlank() || session.hasApp(required);
+            var hasAccess = appAssigned(session, client);
             var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName());
             if (hasAccess) accessible.add(entry); else inaccessible.add(entry);
         }
@@ -204,12 +202,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         for (var client : clients) {
             if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
             var clientName = client.getClass().getSimpleName();
-            // Okta app assignment is a real authorisation boundary for clients backed by a
-            // shared/org-wide credential (e.g. okta-admin): isConnected() alone can't gate them
-            // per-user. Match the check GET /access already applies, and hide the tools
-            // entirely — no live fetch, no cached fallback — for a user missing the app.
-            var requiredAppId = client.getRequiredOktaAppId();
-            if (!requiredAppId.isBlank() && !session.hasApp(requiredAppId)) {
+            if (!appAssigned(session, client)) {
                 log.info("MCP tools/list: {} app not assigned to user {} — hiding tools", clientName, userId);
                 continue;
             }
@@ -325,13 +318,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             return errorJson(id, -32601, "No MCP client can handle tool: " + toolName);
         }
 
-        // Okta app assignment is a real authorisation boundary for clients backed by a
-        // shared/org-wide credential (e.g. okta-admin), where isConnected() can't gate per-user.
-        // Match the check GET /access already applies, and enforce it here too — this is the
-        // actual data path. Fail the same way as "no client can handle" to avoid disclosing
-        // more than the dashboard already does.
-        var requiredAppId = client.getRequiredOktaAppId();
-        if (!requiredAppId.isBlank() && !session.hasApp(requiredAppId)) {
+        if (!appAssigned(session, client)) {
             log.warn("tools/call: {} app not assigned for user {}, tool={}", client.getMcpName(), userEmail, toolName);
             componentClient
                     .forEventSourcedEntity(UUID.randomUUID().toString())
@@ -417,6 +404,12 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             resp.put("isError", true);
             return responseJson(id, resp);
         }
+    }
+
+    /** True if the client has no required Okta app, or the session's user is assigned it. */
+    private boolean appAssigned(UserSession session, RemoteMcpClient client) {
+        var requiredAppId = client.getRequiredOktaAppId();
+        return requiredAppId.isBlank() || session.hasApp(requiredAppId);
     }
 
     // -- static helpers --
