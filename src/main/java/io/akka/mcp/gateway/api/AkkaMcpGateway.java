@@ -123,7 +123,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
 
     @Post("")
     public HttpResponse handleMcp(HttpEntity.Strict rawBody) {
-        var session = requireSession();
+        var session = requireMcpSession();
         if (session == null) return unauthorizedForMcp();
 
         String body = rawBody.getData().utf8String();
