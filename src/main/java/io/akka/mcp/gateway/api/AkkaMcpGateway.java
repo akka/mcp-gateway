@@ -324,7 +324,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                     .forEventSourcedEntity(UUID.randomUUID().toString())
                     .method(McpInteractionEntity::record)
                     .invoke(new McpInteractionEntity.RecordCommand(
-                            userEmail, client.getMcpId(), toolName, Map.of("error", "app-not-assigned"), "resp"));
+                            userEmail, client.getMcpId(), toolName, Map.of("reason", "app-not-assigned"), "rejected"));
             return errorJson(id, -32601, "No MCP client can handle tool: " + toolName);
         }
 
