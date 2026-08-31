@@ -165,6 +165,26 @@
         </div>
     </div>
 
+    <div class="card" data-mcp-id="google-docs" style="display:none">
+        <div class="card-header" onclick="toggleCard('gdocs')">
+            <h2>Google Docs</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="gdocs-dot"></span>
+                <span class="chevron" id="gdocs-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="gdocs-body">
+            <div id="gdocs-status" class="status loading">Loading status…</div>
+            <div id="gdocs-actions" class="actions"></div>
+            <div id="gdocs-test-result" class="test-result"></div>
+            <div id="gdocs-token-box" class="token-box">
+                <code id="gdocs-token" onclick="copyToken('gdocs-token')"></code>
+                <p class="token-hint">Click to copy. Keep this secret.</p>
+            </div>
+            <p class="token-expiry" id="gdocs-expiry"></p>
+        </div>
+    </div>
+
     <div class="card" data-mcp-id="reo" style="display:none">
         <div class="card-header" onclick="toggleCard('reo')">
             <h2>Reo</h2>
@@ -364,6 +384,7 @@
         function renderGCalStatus(data)         { renderStatus('gcal',    data, '/google-calendar/oauth/test', '/google-calendar/oauth/token', '/google-calendar/oauth/connect', '/google-calendar/oauth/disconnect', 'Connect to Google Calendar'); }
         function renderSlackStatus(data)        { renderStatus('slack',   data, '/slack/oauth/test',           '/slack/oauth/token',           '/slack/oauth/connect',           '/slack/oauth/disconnect',           'Connect to Slack'); }
         function renderGDriveStatus(data)       { renderStatus('gdrive',  data, '/googledrive/oauth/test',     '/googledrive/oauth/token',     '/googledrive/oauth/connect',     '/googledrive/oauth/disconnect',     'Connect to Google Drive'); }
+        function renderGDocsStatus(data)        { renderStatus('gdocs',   data, '/googledocs/oauth/test',      '/googledocs/oauth/token',      '/googledocs/oauth/connect',      '/googledocs/oauth/disconnect',      'Connect to Google Docs'); }
         function renderGroundcoverStatus(data)  { renderStatus('gc',      data, '/groundcover/test',           '/groundcover/token',           '/groundcover/connect',           '/groundcover/disconnect',           'Connect to Groundcover'); }
         function renderHubspotStatus(data)      { renderStatus('hubspot', data, '/hubspot/oauth/test',         '/hubspot/oauth/token',         '/hubspot/oauth/connect',         '/hubspot/oauth/disconnect',         'Connect to HubSpot'); }
 
@@ -450,6 +471,7 @@
             'salesforce':      function() { fetch('/salesforce/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSalesforceStatus).catch(function() { renderError('sf-status'); }); },
             'zoho-desk':       function() { fetch('/zoho/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderZohoStatus).catch(function() { renderError('zoho-status'); }); },
             'google-drive':    function() { fetch('/googledrive/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGDriveStatus).catch(function() { renderError('gdrive-status'); }); },
+            'google-docs':     function() { fetch('/googledocs/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGDocsStatus).catch(function() { renderError('gdocs-status'); }); },
             'reo':             function() { fetch('/reo/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderReoStatus).catch(function() { renderError('reo-status'); }); },
             'gmail':           function() { fetch('/gmail/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGmailStatus).catch(function() { renderError('gmail-status'); }); },
             'google-calendar': function() { fetch('/google-calendar/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGCalStatus).catch(function() { renderError('gcal-status'); }); },

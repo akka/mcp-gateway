@@ -73,7 +73,14 @@ Optional support-contact settings surface in the "request an integration" help t
 - `GOOGLE_DRIVE_CLIENT_ID`
 - `GOOGLE_DRIVE_CLIENT_SECRET`
 - `GOOGLE_DRIVE_REDIRECT_URI`
-- `GOOGLE_DRIVE_OKTA_APP_ID` — the shared Google app instance id (Drive, Gmail, and Calendar all use it).
+- `GOOGLE_DRIVE_OKTA_APP_ID` — the shared Google app instance id (Drive, Gmail, Calendar, and Docs all use it).
+
+**Google Docs** — document content, edits, and comments.
+- `GOOGLE_DOCS_CLIENT_ID`
+- `GOOGLE_DOCS_CLIENT_SECRET`
+- `GOOGLE_DOCS_REDIRECT_URI`
+- `GOOGLE_DOCS_MCP_URL` *(optional — defaults to Google's hosted server)*
+- `GOOGLE_DOCS_OKTA_APP_ID` *(optional — defaults to `GOOGLE_DRIVE_OKTA_APP_ID`)*
 
 **Gmail** — mail search and threads.
 - `GMAIL_CLIENT_ID`
@@ -147,14 +154,14 @@ Every system is tied to an Okta application. Being assigned that application is 
 |---|---|
 | Zoho Desk | Zoho Desk |
 | Salesforce | Salesforce |
-| Google Drive, Gmail, Google Calendar | a single shared Google application |
+| Google Drive, Gmail, Google Calendar, Google Docs | a single shared Google application |
 | Slack | Slack |
 | HubSpot | HubSpot |
 | Reo | Reo |
 | Groundcover | Groundcover |
 | Okta admin lookups | Okta MCP Admin |
 
-Because Drive, Gmail, and Calendar share one Google application, being assigned it makes all three appear at once — they cannot currently be granted separately.
+Because Drive, Gmail, Calendar, and Docs share one Google application, being assigned it makes all four appear at once — they cannot currently be granted separately.
 
 ### Connecting is still per-person
 
