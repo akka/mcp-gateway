@@ -4,6 +4,7 @@ import akka.Done;
 import akka.javasdk.annotations.Component;
 import akka.javasdk.keyvalueentity.KeyValueEntity;
 import io.akka.mcp.gateway.domain.OAuthRefreshToken;
+import io.akka.mcp.gateway.domain.UserSession;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,7 +20,8 @@ public class OAuthRefreshTokenEntity extends KeyValueEntity<OAuthRefreshToken> {
     public Effect<Done> create(CreateCommand cmd) {
         var state = new OAuthRefreshToken(
                 cmd.token(), cmd.userId(), cmd.displayName(),
-                cmd.clientId(), cmd.groups(), cmd.expiresAt(), false);
+                cmd.clientId(), cmd.groups(), cmd.expiresAt(), false,
+                cmd.apps(), cmd.idToken());
         return effects().updateState(state).thenReply(Done.getInstance());
     }
 
@@ -31,7 +33,8 @@ public class OAuthRefreshTokenEntity extends KeyValueEntity<OAuthRefreshToken> {
         if (currentState().isEmpty()) return effects().reply(Done.getInstance());
         var revoked = new OAuthRefreshToken(
                 currentState().token(), currentState().userId(), currentState().displayName(),
-                currentState().clientId(), currentState().groups(), currentState().expiresAt(), true);
+                currentState().clientId(), currentState().groups(), currentState().expiresAt(), true,
+                currentState().apps(), currentState().idToken());
         return effects().updateState(revoked).thenReply(Done.getInstance());
     }
 
@@ -41,5 +44,7 @@ public class OAuthRefreshTokenEntity extends KeyValueEntity<OAuthRefreshToken> {
             String displayName,
             String clientId,
             List<String> groups,
-            Instant expiresAt) {}
+            Instant expiresAt,
+            List<UserSession.App> apps,
+            String idToken) {}
 }
