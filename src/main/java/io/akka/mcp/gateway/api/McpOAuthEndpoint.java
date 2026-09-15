@@ -147,6 +147,47 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         }
     }
 
+    /**
+     * Re-fetches the user's current Okta app assignments, mirroring {@link #fetchCurrentGroups}.
+     * Without this, app-gated tools (okta-admin especially) would silently disappear on the next
+     * refresh, since the refresh grant doesn't otherwise know which apps are currently assigned.
+     * Falls back to the stored apps if the lookup fails or isn't configured.
+     */
+    private List<io.akka.mcp.gateway.domain.UserSession.App> fetchCurrentApps(
+            String email, List<io.akka.mcp.gateway.domain.UserSession.App> fallback) {
+        if (oktaApiToken.isBlank() || oktaBaseUrl.isBlank() || email == null || email.isBlank()) {
+            return fallback;
+        }
+        try {
+            var encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
+            var request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(oktaBaseUrl + "/api/v1/users/" + encodedEmail + "/appLinks"))
+                    .header("Authorization", "SSWS " + oktaApiToken)
+                    .header("Accept", "application/json")
+                    .GET().build();
+            var resp = java.net.http.HttpClient.newHttpClient()
+                    .send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                log.warn("Okta apps refresh: status={} for {}", resp.statusCode(), email);
+                return fallback;
+            }
+            var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
+            if (!json.isArray()) return fallback;
+            var apps = new java.util.ArrayList<io.akka.mcp.gateway.domain.UserSession.App>();
+            for (var app : json) {
+                var appInstanceId = app.path("appInstanceId").asText("");
+                var label = app.path("label").asText("");
+                if (!appInstanceId.isBlank() && apps.stream().noneMatch(a -> a.id().equals(appInstanceId))) {
+                    apps.add(new io.akka.mcp.gateway.domain.UserSession.App(appInstanceId, label.isBlank() ? appInstanceId : label));
+                }
+            }
+            return apps;
+        } catch (Exception e) {
+            log.warn("Okta apps refresh failed for {}: {}", email, e.getMessage());
+            return fallback;
+        }
+    }
+
     // ── Dynamic Client Registration ─────────────────────────────────────────
 
     public record RegisterRequest(List<String> redirect_uris, String client_name) {}
@@ -483,7 +524,9 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                 userSession.isEmpty() ? "" : userSession.email(),
                 userSession.isEmpty() ? "" : userSession.displayName(),
                 clientId,
-                userSession.isEmpty() ? List.of() : userSession.groups());
+                userSession.isEmpty() ? List.of() : userSession.groups(),
+                userSession.isEmpty() ? List.of() : userSession.apps(),
+                userSession.isEmpty() ? null : userSession.idToken());
 
         return HttpResponse.create()
                 .withStatus(StatusCodes.OK)
@@ -515,10 +558,13 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         componentClient.forKeyValueEntity(refreshTokenValue)
                 .method(OAuthRefreshTokenEntity::revoke).invoke();
 
-        // Re-check current group membership against Okta rather than trusting the groups
-        // captured at the original authorization — otherwise a role revoked since then would
-        // never take effect for as long as the client keeps refreshing.
+        // Re-check current group membership and app assignments against Okta rather than
+        // trusting what was captured at the original authorization — otherwise a role revoked,
+        // or an app unassigned, since then would never take effect for as long as the client
+        // keeps refreshing (see issue #77).
         List<String> currentGroups = fetchCurrentGroups(storedToken.userId(), storedToken.groups());
+        List<io.akka.mcp.gateway.domain.UserSession.App> currentApps =
+                fetchCurrentApps(storedToken.userId(), storedToken.apps());
 
         // Create a new session for the user
         String newSessionToken = UUID.randomUUID().toString();
@@ -529,13 +575,13 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                         storedToken.displayName(),
                         Instant.now().plusSeconds(ACCESS_TOKEN_TTL_SECONDS),
                         currentGroups,
-                        null,
-                        List.of()));
+                        storedToken.idToken(),
+                        currentApps));
 
         // Issue a new refresh token
         String newRefreshToken = issueRefreshToken(
                 storedToken.userId(), storedToken.displayName(),
-                clientId, currentGroups);
+                clientId, currentGroups, currentApps, storedToken.idToken());
 
         return HttpResponse.create()
                 .withStatus(StatusCodes.OK)
@@ -543,13 +589,16 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                         toJson(new TokenResponse(newSessionToken, "Bearer", ACCESS_TOKEN_TTL_SECONDS, newRefreshToken)));
     }
 
-    private String issueRefreshToken(String userId, String displayName, String clientId, List<String> groups) {
+    private String issueRefreshToken(
+            String userId, String displayName, String clientId, List<String> groups,
+            List<io.akka.mcp.gateway.domain.UserSession.App> apps, String idToken) {
         String token = UUID.randomUUID().toString();
         componentClient.forKeyValueEntity(token)
                 .method(OAuthRefreshTokenEntity::create)
                 .invoke(new OAuthRefreshTokenEntity.CreateCommand(
                         token, userId, displayName, clientId, groups,
-                        Instant.now().plus(REFRESH_TOKEN_TTL_DAYS, ChronoUnit.DAYS)));
+                        Instant.now().plus(REFRESH_TOKEN_TTL_DAYS, ChronoUnit.DAYS),
+                        apps, idToken));
         return token;
     }
 
