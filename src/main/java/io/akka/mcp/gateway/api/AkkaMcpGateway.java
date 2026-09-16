@@ -112,9 +112,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         var inaccessible = new ArrayList<McpAccessEntry>();
         for (var client : clients) {
             if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
-            var required = client.getRequiredOktaAppId();
-            // match on the stable Okta app id, never the display label
-            var hasAccess = required.isBlank() || session.hasApp(required);
+            var hasAccess = appAssigned(session, client);
             var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName());
             if (hasAccess) accessible.add(entry); else inaccessible.add(entry);
         }
@@ -147,7 +145,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         String responseJson = switch (method) {
             case "initialize" -> handleInitialize(id);
             case "notifications/initialized" -> "{}";
-            case "tools/list" -> handleToolsList(id, session.email());
+            case "tools/list" -> handleToolsList(id, session);
             case "tools/call" -> handleToolsCall(id, params, session); // logs its own req+resp
             case "ping" -> responseJson(id, Map.of());
             default -> {
@@ -182,7 +180,8 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         return responseJson(id, result);
     }
 
-    private String handleToolsList(Long id, String userId) {
+    private String handleToolsList(Long id, UserSession session) {
+        String userId = session.email();
         log.info("MCP tools/list: aggregating from {} clients", clients.size());
         List<Map<String, Object>> allTools = new ArrayList<>();
 
@@ -203,6 +202,10 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         for (var client : clients) {
             if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
             var clientName = client.getClass().getSimpleName();
+            if (!appAssigned(session, client)) {
+                log.info("MCP tools/list: {} app not assigned to user {} — hiding tools", clientName, userId);
+                continue;
+            }
             try {
                 if (client.isConnected(userId)) {
                     log.info("MCP tools/list: fetching live tools from {}", clientName);
@@ -315,6 +318,16 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             return errorJson(id, -32601, "No MCP client can handle tool: " + toolName);
         }
 
+        if (!appAssigned(session, client)) {
+            log.warn("tools/call: {} app not assigned for user {}, tool={}", client.getMcpName(), userEmail, toolName);
+            componentClient
+                    .forEventSourcedEntity(UUID.randomUUID().toString())
+                    .method(McpInteractionEntity::record)
+                    .invoke(new McpInteractionEntity.RecordCommand(
+                            userEmail, client.getMcpId(), toolName, Map.of("reason", "app-not-assigned"), "rejected"));
+            return errorJson(id, -32601, "No MCP client can handle tool: " + toolName);
+        }
+
         // Return a friendly error when the client exists but the user hasn't connected it.
         // This check must come before the write guard: on cold-start the registry is empty,
         // so toolMeta would be absent and isWrite would default to true — producing a
@@ -391,6 +404,12 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             resp.put("isError", true);
             return responseJson(id, resp);
         }
+    }
+
+    /** True if the client has no required Okta app, or the session's user is assigned it. */
+    private boolean appAssigned(UserSession session, RemoteMcpClient client) {
+        var requiredAppId = client.getRequiredOktaAppId();
+        return requiredAppId.isBlank() || session.hasApp(requiredAppId);
     }
 
     // -- static helpers --
