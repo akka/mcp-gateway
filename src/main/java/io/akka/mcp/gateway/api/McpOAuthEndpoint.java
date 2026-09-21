@@ -222,7 +222,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                     .withEntity(ContentTypes.APPLICATION_JSON,
                             "{\"error\":\"invalid_redirect_uri\",\"error_description\":"
                                     + "\"redirect_uris must be a loopback http URI (127.0.0.1/localhost) or an https URI"
-                                    + (redirectHostAllowlist.isEmpty() ? "" : " on an allowed host")
+                                    + " on an allowed host"
                                     + "\"}");
         }
 
@@ -675,7 +675,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
             return LOOPBACK_HOSTS.contains(lowerHost);
         }
         if ("https".equals(lowerScheme)) {
-            return redirectHostAllowlist.isEmpty() || redirectHostAllowlist.contains(lowerHost);
+            return redirectHostAllowlist.contains(lowerHost);
         }
         return false;
     }

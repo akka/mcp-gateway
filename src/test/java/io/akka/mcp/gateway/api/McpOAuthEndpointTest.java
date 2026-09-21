@@ -31,9 +31,11 @@ public class McpOAuthEndpointTest {
     }
 
     @Test
-    public void https_withoutAllowlist_isAllowedForAnyHost() {
-        assertThat(NO_ALLOWLIST.isAllowedRedirectUri("https://example.com/callback")).isTrue();
-        assertThat(NO_ALLOWLIST.isAllowedRedirectUri("https://anything.example.org/cb")).isTrue();
+    public void https_withoutAllowlist_isDeniedForEveryHost() {
+        // A blank allowlist must fail closed — an "allowlist" that means "allow everything"
+        // when unset is a footgun, not a safe default.
+        assertThat(NO_ALLOWLIST.isAllowedRedirectUri("https://example.com/callback")).isFalse();
+        assertThat(NO_ALLOWLIST.isAllowedRedirectUri("https://anything.example.org/cb")).isFalse();
     }
 
     @Test

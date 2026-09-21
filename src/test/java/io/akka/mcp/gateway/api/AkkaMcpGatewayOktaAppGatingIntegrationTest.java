@@ -3,8 +3,8 @@ package io.akka.mcp.gateway.api;
 import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
+import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
-import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
 import io.akka.mcp.gateway.domain.UserSession;
 import org.junit.jupiter.api.Test;
@@ -38,12 +38,13 @@ public class AkkaMcpGatewayOktaAppGatingIntegrationTest extends TestKitSupport {
                 """.formatted(OKTA_APP_ID));
     }
 
+    /** An MCP client's Bearer token — what {@code POST /mcp} actually accepts. */
     private String createSession(List<UserSession.App> apps) {
         var token = UUID.randomUUID().toString();
         componentClient.forKeyValueEntity(token)
-                .method(UserSessionEntity::create)
-                .invoke(new UserSessionEntity.CreateCommand(
-                        "user@lightbend.com", "User", Instant.now().plusSeconds(3600), List.of(), "", apps));
+                .method(McpAccessTokenEntity::create)
+                .invoke(new McpAccessTokenEntity.CreateCommand(
+                        "user@lightbend.com", "User", List.of(), apps, "client-1", Instant.now().plusSeconds(3600)));
         return token;
     }
 
