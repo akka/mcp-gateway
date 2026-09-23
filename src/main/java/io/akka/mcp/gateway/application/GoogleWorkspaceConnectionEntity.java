@@ -4,7 +4,7 @@ import akka.Done;
 import akka.javasdk.annotations.Component;
 import akka.javasdk.keyvalueentity.KeyValueEntity;
 import com.typesafe.config.Config;
-import io.akka.mcp.gateway.domain.GoogleDocsConnection;
+import io.akka.mcp.gateway.domain.GoogleWorkspaceConnection;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -15,44 +15,44 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
-@Component(id = "google-docs-connection")
-public class GoogleDocsConnectionEntity extends KeyValueEntity<GoogleDocsConnection> {
+@Component(id = "google-workspace-connection")
+public class GoogleWorkspaceConnectionEntity extends KeyValueEntity<GoogleWorkspaceConnection> {
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String clientSecret;
 
-    public GoogleDocsConnectionEntity(Config config) {
-        this.clientSecret = config.getString("google-docs.client-secret");
+    public GoogleWorkspaceConnectionEntity(Config config) {
+        this.clientSecret = config.getString("google-workspace.client-secret");
     }
 
     @Override
-    public GoogleDocsConnection emptyState() {
-        return GoogleDocsConnection.empty();
+    public GoogleWorkspaceConnection emptyState() {
+        return GoogleWorkspaceConnection.empty();
     }
 
-    public ReadOnlyEffect<GoogleDocsConnection> getStatus() {
+    public ReadOnlyEffect<GoogleWorkspaceConnection> getStatus() {
         return effects().reply(currentState());
     }
 
     public Effect<String> getAccessToken() {
         var state = currentState();
         if (!state.isConnected()) {
-            return effects().error("Google Docs is not connected. Please complete the OAuth setup.");
+            return effects().error("Google Workspace is not connected. Please complete the OAuth setup.");
         }
         if (!state.isTokenExpired()) {
             return effects().reply(state.accessToken());
         }
         if (state.refreshToken() == null || state.tokenEndpoint() == null) {
-            return effects().error("Google Docs token has expired. Please reconnect.");
+            return effects().error("Google Workspace token has expired. Please reconnect.");
         }
         try {
             var fresh = performRefresh(state);
             var newState = state.withToken(fresh.accessToken(), fresh.refreshToken(), fresh.expiresAt());
             return effects().updateState(newState).thenReply(newState.accessToken());
         } catch (Exception e) {
-            return effects().error("Failed to refresh Google Docs token: " + e.getMessage());
+            return effects().error("Failed to refresh Google Workspace token: " + e.getMessage());
         }
     }
 
@@ -77,7 +77,7 @@ public class GoogleDocsConnectionEntity extends KeyValueEntity<GoogleDocsConnect
 
     private record FreshToken(String accessToken, String refreshToken, Instant expiresAt) {}
 
-    private FreshToken performRefresh(GoogleDocsConnection connection) throws Exception {
+    private FreshToken performRefresh(GoogleWorkspaceConnection connection) throws Exception {
         String formBody = "grant_type=refresh_token"
                 + "&refresh_token=" + URLEncoder.encode(connection.refreshToken(), StandardCharsets.UTF_8)
                 + "&client_id=" + URLEncoder.encode(connection.clientId(), StandardCharsets.UTF_8)

@@ -14,7 +14,10 @@ import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.AkkaSalesforceMcpClient;
 import io.akka.mcp.gateway.application.GmailMcpClient;
 import io.akka.mcp.gateway.application.GoogleCalendarMcpClient;
-import io.akka.mcp.gateway.application.GoogleDocsMcpClient;
+import io.akka.mcp.gateway.application.WorkspaceCalendarMcpClient;
+import io.akka.mcp.gateway.application.WorkspaceDocsMcpClient;
+import io.akka.mcp.gateway.application.WorkspaceDriveMcpClient;
+import io.akka.mcp.gateway.application.WorkspaceGmailMcpClient;
 import io.akka.mcp.gateway.application.GoogleDriveMcpClient;
 import io.akka.mcp.gateway.application.GroundcoverMcpClient;
 import io.akka.mcp.gateway.application.HowToMcpClient;
@@ -73,7 +76,10 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         var serviceClients = List.<RemoteMcpClient>of(
                 new ZohoMcpClient(componentClient, config.getString("zoho.mcp-url"), config.getString("zoho.okta-app-id")),
                 new GoogleDriveMcpClient(componentClient, config.getString("google-drive.mcp-url"), config.getString("google-drive.okta-app-id")),
-                new GoogleDocsMcpClient(componentClient, config.getString("google-docs.mcp-url"), config.getString("google-docs.okta-app-id")),
+                new WorkspaceDriveMcpClient(componentClient, config.getString("google-workspace.drive.mcp-url"), config.getString("google-workspace.okta-app-id")),
+                new WorkspaceDocsMcpClient(componentClient, config.getString("google-workspace.docs.mcp-url"), config.getString("google-workspace.okta-app-id")),
+                new WorkspaceGmailMcpClient(componentClient, config.getString("google-workspace.gmail.mcp-url"), config.getString("google-workspace.okta-app-id")),
+                new WorkspaceCalendarMcpClient(componentClient, config.getString("google-workspace.calendar.mcp-url"), config.getString("google-workspace.okta-app-id")),
                 new SalesforceMcpClient(componentClient, config.getString("salesforce.mcp-url"), config.getString("salesforce.okta-app-id")),
                 new AkkaSalesforceMcpClient(componentClient, httpClientProvider, config.getString("akka-salesforce.mcp-url"), config.getString("akka-salesforce.okta-app-id")),
                 new ReoMcpClient(componentClient, config.getString("reo.mcp-url"), config.getString("reo.okta-app-id")),

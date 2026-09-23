@@ -60,6 +60,8 @@
         .card-locked { opacity: 0.45; pointer-events: none; }
         .card-locked .card-header { cursor: default; }
         .locked-badge { font-size: 0.75rem; font-weight: 500; color: #888; background: #f0f0f0; border: 1px solid #ddd; border-radius: 20px; padding: 2px 8px; }
+        .deprecated-badge { font-size: 0.7rem; font-weight: 600; color: #8a4a00; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 20px; padding: 2px 8px; text-transform: uppercase; letter-spacing: 0.03em; }
+        .deprecation-notice { background: #fff8e1; border: 1px solid #ffe082; color: #6b4200; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.82rem; }
         .session-strip { margin-top: 32px; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px 20px; }
         .session-strip h3 { font-size: 0.85rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px; }
         .session-token-row { display: flex; align-items: center; gap: 10px; }
@@ -149,11 +151,16 @@
         <div class="card-header" onclick="toggleCard('gdrive')">
             <h2>Google Drive</h2>
             <div class="card-header-right">
+                <span class="deprecated-badge">Deprecated</span>
                 <span class="status-dot" id="gdrive-dot"></span>
                 <span class="chevron" id="gdrive-chevron">▼</span>
             </div>
         </div>
         <div class="card-body" id="gdrive-body">
+            <div class="deprecation-notice">
+                <strong>Deprecated.</strong> Use the <em>Google Workspace</em> connector instead — one sign-in
+                covers Drive, Docs, Gmail, and Calendar, and files are reachable across products.
+            </div>
             <div id="gdrive-status" class="status loading">Loading status…</div>
             <div id="gdrive-actions" class="actions"></div>
             <div id="gdrive-test-result" class="test-result"></div>
@@ -165,23 +172,26 @@
         </div>
     </div>
 
-    <div class="card" data-mcp-id="google-docs" style="display:none">
-        <div class="card-header" onclick="toggleCard('gdocs')">
-            <h2>Google Docs</h2>
+    <div class="card" data-mcp-id="google-workspace" style="display:none">
+        <div class="card-header" onclick="toggleCard('gws')">
+            <h2>Google Workspace</h2>
             <div class="card-header-right">
-                <span class="status-dot" id="gdocs-dot"></span>
-                <span class="chevron" id="gdocs-chevron">▼</span>
+                <span class="status-dot" id="gws-dot"></span>
+                <span class="chevron" id="gws-chevron">▼</span>
             </div>
         </div>
-        <div class="card-body" id="gdocs-body">
-            <div id="gdocs-status" class="status loading">Loading status…</div>
-            <div id="gdocs-actions" class="actions"></div>
-            <div id="gdocs-test-result" class="test-result"></div>
-            <div id="gdocs-token-box" class="token-box">
-                <code id="gdocs-token" onclick="copyToken('gdocs-token')"></code>
+        <div class="card-body" id="gws-body">
+            <p style="font-size: 0.85rem; color: #555; margin-top: 0;">
+                A single sign-in for Drive, Docs, Gmail, and Calendar — files created in one product are reachable from the others.
+            </p>
+            <div id="gws-status" class="status loading">Loading status…</div>
+            <div id="gws-actions" class="actions"></div>
+            <div id="gws-test-result" class="test-result"></div>
+            <div id="gws-token-box" class="token-box">
+                <code id="gws-token" onclick="copyToken('gws-token')"></code>
                 <p class="token-hint">Click to copy. Keep this secret.</p>
             </div>
-            <p class="token-expiry" id="gdocs-expiry"></p>
+            <p class="token-expiry" id="gws-expiry"></p>
         </div>
     </div>
 
@@ -209,11 +219,16 @@
         <div class="card-header" onclick="toggleCard('gmail')">
             <h2>Gmail</h2>
             <div class="card-header-right">
+                <span class="deprecated-badge">Deprecated</span>
                 <span class="status-dot" id="gmail-dot"></span>
                 <span class="chevron" id="gmail-chevron">▼</span>
             </div>
         </div>
         <div class="card-body" id="gmail-body">
+            <div class="deprecation-notice">
+                <strong>Deprecated.</strong> Use the <em>Google Workspace</em> connector instead — one sign-in
+                covers Drive, Docs, Gmail, and Calendar, and files are reachable across products.
+            </div>
             <div id="gmail-status" class="status loading">Loading status…</div>
             <div id="gmail-actions" class="actions"></div>
             <div id="gmail-test-result" class="test-result"></div>
@@ -229,11 +244,16 @@
         <div class="card-header" onclick="toggleCard('gcal')">
             <h2>Google Calendar</h2>
             <div class="card-header-right">
+                <span class="deprecated-badge">Deprecated</span>
                 <span class="status-dot" id="gcal-dot"></span>
                 <span class="chevron" id="gcal-chevron">▼</span>
             </div>
         </div>
         <div class="card-body" id="gcal-body">
+            <div class="deprecation-notice">
+                <strong>Deprecated.</strong> Use the <em>Google Workspace</em> connector instead — one sign-in
+                covers Drive, Docs, Gmail, and Calendar, and files are reachable across products.
+            </div>
             <div id="gcal-status" class="status loading">Loading status…</div>
             <div id="gcal-actions" class="actions"></div>
             <div id="gcal-test-result" class="test-result"></div>
@@ -384,7 +404,7 @@
         function renderGCalStatus(data)         { renderStatus('gcal',    data, '/google-calendar/oauth/test', '/google-calendar/oauth/token', '/google-calendar/oauth/connect', '/google-calendar/oauth/disconnect', 'Connect to Google Calendar'); }
         function renderSlackStatus(data)        { renderStatus('slack',   data, '/slack/oauth/test',           '/slack/oauth/token',           '/slack/oauth/connect',           '/slack/oauth/disconnect',           'Connect to Slack'); }
         function renderGDriveStatus(data)       { renderStatus('gdrive',  data, '/googledrive/oauth/test',     '/googledrive/oauth/token',     '/googledrive/oauth/connect',     '/googledrive/oauth/disconnect',     'Connect to Google Drive'); }
-        function renderGDocsStatus(data)        { renderStatus('gdocs',   data, '/googledocs/oauth/test',      '/googledocs/oauth/token',      '/googledocs/oauth/connect',      '/googledocs/oauth/disconnect',      'Connect to Google Docs'); }
+        function renderGWorkspaceStatus(data)    { renderStatus('gws',     data, '/googleworkspace/oauth/test', '/googleworkspace/oauth/token', '/googleworkspace/oauth/connect', '/googleworkspace/oauth/disconnect', 'Connect to Google Workspace'); }
         function renderGroundcoverStatus(data)  { renderStatus('gc',      data, '/groundcover/test',           '/groundcover/token',           '/groundcover/connect',           '/groundcover/disconnect',           'Connect to Groundcover'); }
         function renderHubspotStatus(data)      { renderStatus('hubspot', data, '/hubspot/oauth/test',         '/hubspot/oauth/token',         '/hubspot/oauth/connect',         '/hubspot/oauth/disconnect',         'Connect to HubSpot'); }
 
@@ -471,7 +491,7 @@
             'salesforce':      function() { fetch('/salesforce/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSalesforceStatus).catch(function() { renderError('sf-status'); }); },
             'zoho-desk':       function() { fetch('/zoho/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderZohoStatus).catch(function() { renderError('zoho-status'); }); },
             'google-drive':    function() { fetch('/googledrive/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGDriveStatus).catch(function() { renderError('gdrive-status'); }); },
-            'google-docs':     function() { fetch('/googledocs/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGDocsStatus).catch(function() { renderError('gdocs-status'); }); },
+            'google-workspace':function() { fetch('/googleworkspace/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGWorkspaceStatus).catch(function() { renderError('gws-status'); }); },
             'reo':             function() { fetch('/reo/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderReoStatus).catch(function() { renderError('reo-status'); }); },
             'gmail':           function() { fetch('/gmail/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGmailStatus).catch(function() { renderError('gmail-status'); }); },
             'google-calendar': function() { fetch('/google-calendar/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGCalStatus).catch(function() { renderError('gcal-status'); }); },
@@ -502,18 +522,32 @@
                         var sectionB = document.getElementById('section-inaccessible');
                         var inaccessibleCards = document.getElementById('inaccessible-cards');
 
+                        // Collapse the four google-workspace-* MCP ids to the single "google-workspace"
+                        // card — they share one OAuth connection, so the dashboard shows one entry.
+                        function normalizeMcpId(mcpId) {
+                            return mcpId.indexOf('google-workspace-') === 0 ? 'google-workspace' : mcpId;
+                        }
+
+                        var seenAccessible = {};
                         access.accessible.forEach(function(mcp) {
-                            var card = document.querySelector('[data-mcp-id="' + mcp.mcpId + '"]');
+                            var mcpId = normalizeMcpId(mcp.mcpId);
+                            if (seenAccessible[mcpId]) return;
+                            seenAccessible[mcpId] = true;
+                            var card = document.querySelector('[data-mcp-id="' + mcpId + '"]');
                             if (!card) return;
                             sectionA.appendChild(card);
                             card.style.display = '';
-                            if (STATUS_FETCHERS[mcp.mcpId]) STATUS_FETCHERS[mcp.mcpId]();
+                            if (STATUS_FETCHERS[mcpId]) STATUS_FETCHERS[mcpId]();
                         });
 
                         if (access.inaccessible.length > 0) {
                             sectionB.style.display = '';
+                            var seenInaccessible = {};
                             access.inaccessible.forEach(function(mcp) {
-                                var card = document.querySelector('[data-mcp-id="' + mcp.mcpId + '"]');
+                                var mcpId = normalizeMcpId(mcp.mcpId);
+                                if (seenInaccessible[mcpId] || seenAccessible[mcpId]) return;
+                                seenInaccessible[mcpId] = true;
+                                var card = document.querySelector('[data-mcp-id="' + mcpId + '"]');
                                 if (!card) return;
                                 card.classList.add('card-locked');
                                 var badge = document.createElement('span');

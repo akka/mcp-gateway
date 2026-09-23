@@ -2,7 +2,7 @@ package io.akka.mcp.gateway.domain;
 
 import java.time.Instant;
 
-public record GoogleDocsConnection(
+public record GoogleWorkspaceConnection(
         String accessToken,
         String refreshToken,
         Instant tokenExpiresAt,
@@ -12,8 +12,8 @@ public record GoogleDocsConnection(
         String tokenEndpoint,
         Instant pendingExpiresAt
 ) {
-    public static GoogleDocsConnection empty() {
-        return new GoogleDocsConnection(null, null, null, null, null, null, null, null);
+    public static GoogleWorkspaceConnection empty() {
+        return new GoogleWorkspaceConnection(null, null, null, null, null, null, null, null);
     }
 
     public boolean isConnected() {
@@ -31,15 +31,15 @@ public record GoogleDocsConnection(
         return pendingState.equals(candidate);
     }
 
-    public GoogleDocsConnection withPending(String state, String verifier, String dynClientId, String endpoint, Instant expiresAt) {
-        return new GoogleDocsConnection(accessToken, refreshToken, tokenExpiresAt, state, verifier, dynClientId, endpoint, expiresAt);
+    public GoogleWorkspaceConnection withPending(String state, String verifier, String dynClientId, String endpoint, Instant expiresAt) {
+        return new GoogleWorkspaceConnection(accessToken, refreshToken, tokenExpiresAt, state, verifier, dynClientId, endpoint, expiresAt);
     }
 
-    public GoogleDocsConnection withToken(String token, String refresh, Instant expiresAt) {
-        return new GoogleDocsConnection(token, refresh, expiresAt, null, null, clientId, tokenEndpoint, null);
+    public GoogleWorkspaceConnection withToken(String token, String refresh, Instant expiresAt) {
+        return new GoogleWorkspaceConnection(token, refresh, expiresAt, null, null, clientId, tokenEndpoint, null);
     }
 
-    public GoogleDocsConnection disconnected() {
+    public GoogleWorkspaceConnection disconnected() {
         return empty();
     }
 }

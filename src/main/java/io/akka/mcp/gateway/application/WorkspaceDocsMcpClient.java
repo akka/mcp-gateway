@@ -20,18 +20,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public class GoogleDocsMcpClient implements RemoteMcpClient {
+public class WorkspaceDocsMcpClient implements RemoteMcpClient {
 
-    public static final String MCP_ID = "google-docs";
-    public static final String MCP_NAME = "Google Docs";
-    private static final Logger log = LoggerFactory.getLogger(GoogleDocsMcpClient.class);
+    public static final String MCP_ID = "google-workspace-docs";
+    public static final String MCP_NAME = "Google Workspace — Docs";
+    private static final Logger log = LoggerFactory.getLogger(WorkspaceDocsMcpClient.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ComponentClient componentClient;
     private final String mcpUrl;
     private final String oktaAppId;
 
-    public GoogleDocsMcpClient(ComponentClient componentClient, String mcpUrl, String oktaAppId) {
+    public WorkspaceDocsMcpClient(ComponentClient componentClient, String mcpUrl, String oktaAppId) {
         this.componentClient = componentClient;
         this.mcpUrl = mcpUrl;
         this.oktaAppId = oktaAppId;
@@ -49,34 +49,20 @@ public class GoogleDocsMcpClient implements RemoteMcpClient {
     @Override
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(
-                "Step-by-step instructions for connecting your Google Docs account to the MCP Gateway.",
+                "How the Google Workspace connector exposes Google Docs.",
                 "Read document content, apply edits, manage comments",
                 """
-                # How to Connect Google Docs
+                # Google Docs (via the Google Workspace connector)
 
-                ## Prerequisites
-                - A Google account with access to the documents you need
-                - Your Okta SSO login for the MCP Gateway
+                Docs is one of several products bundled under the single **Google Workspace** connector
+                (Drive, Docs, Gmail, Calendar). A single OAuth grant covers all of them, so files
+                created in one product are reachable from the others.
 
-                ## Steps
-
-                1. **Log in to the MCP Gateway dashboard**
-                   Open %s and sign in with Okta.
-
-                2. **Go to the Google Docs section**
-                   On the dashboard you will see a "Google Docs" card showing *Not connected*.
-
-                3. **Click "Connect Google Docs"**
-                   You will be redirected to the Google OAuth consent screen.
-
-                4. **Select your account and grant access**
-                   Choose your Google account and click *Allow* for the requested permissions.
-
-                5. **Return to the dashboard**
-                   You are redirected back automatically. The Google Docs card now shows *Connected*.
-
-                6. **Verify in your MCP client**
-                   Run `tools/list` — Google Docs tools will appear in the list.
+                ## To connect
+                1. Open %s and sign in with Okta.
+                2. Find the **Google Workspace** card and click *Connect*.
+                3. Grant the requested Google permissions on Google's consent screen.
+                4. All Workspace tools become available — including Docs.
 
                 ## Available capabilities
                 - Read the structured content of a document
@@ -85,10 +71,6 @@ public class GoogleDocsMcpClient implements RemoteMcpClient {
 
                 Write tools require the `mcp-gateway-writer` role. Suggestion / tracked-change
                 ("redline") edits are not available — the Google Docs API applies edits directly.
-
-                ## Troubleshooting
-                - Only documents you personally have access to are visible.
-                - Documents in shared drives may require additional permissions; contact your Google Workspace admin.
                 """.formatted(dashboardUrl));
     }
 
@@ -103,7 +85,7 @@ public class GoogleDocsMcpClient implements RemoteMcpClient {
         }
     }
 
-    private static final String TOOL_PREFIX = "GoogleDocs_";
+    private static final String TOOL_PREFIX = "Workspace_GoogleDocs_";
 
     @Override
     public boolean canHandle(String toolName) {
@@ -183,7 +165,7 @@ public class GoogleDocsMcpClient implements RemoteMcpClient {
     private String fetchToken(String userId) {
         return componentClient
                 .forKeyValueEntity(userId)
-                .method(GoogleDocsConnectionEntity::getAccessToken)
+                .method(GoogleWorkspaceConnectionEntity::getAccessToken)
                 .invoke();
     }
 
