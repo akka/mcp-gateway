@@ -400,11 +400,59 @@
         function renderSalesforceStatus(data)  { renderStatus('sf',      data, '/salesforce/oauth/test',      '/salesforce/oauth/token',      '/salesforce/oauth/connect',      '/salesforce/oauth/disconnect',      'Connect to Salesforce'); }
         function renderZohoStatus(data)         { renderStatus('zoho',    data, '/zoho/oauth/test',            '/zoho/oauth/token',            '/zoho/oauth/connect',            '/zoho/oauth/disconnect',            'Connect to Zoho Desk'); }
         function renderReoStatus(data)          { renderStatus('reo',     data, '/reo/oauth/test',             '/reo/oauth/token',             '/reo/oauth/connect',             '/reo/oauth/disconnect',             'Connect to Reo'); }
-        function renderGmailStatus(data)        { renderStatus('gmail',   data, '/gmail/oauth/test',           '/gmail/oauth/token',           '/gmail/oauth/connect',           '/gmail/oauth/disconnect',           'Connect to Gmail'); }
-        function renderGCalStatus(data)         { renderStatus('gcal',    data, '/google-calendar/oauth/test', '/google-calendar/oauth/token', '/google-calendar/oauth/connect', '/google-calendar/oauth/disconnect', 'Connect to Google Calendar'); }
         function renderSlackStatus(data)        { renderStatus('slack',   data, '/slack/oauth/test',           '/slack/oauth/token',           '/slack/oauth/connect',           '/slack/oauth/disconnect',           'Connect to Slack'); }
-        function renderGDriveStatus(data)       { renderStatus('gdrive',  data, '/googledrive/oauth/test',     '/googledrive/oauth/token',     '/googledrive/oauth/connect',     '/googledrive/oauth/disconnect',     'Connect to Google Drive'); }
-        function renderGWorkspaceStatus(data)    { renderStatus('gws',     data, '/googleworkspace/oauth/test', '/googleworkspace/oauth/token', '/googleworkspace/oauth/connect', '/googleworkspace/oauth/disconnect', 'Connect to Google Workspace'); }
+        // Workspace supersedes the individual Drive, Gmail, and Calendar connectors. A fresh Workspace
+        // connect is blocked while any of the three deprecated connectors is still connected, so the
+        // migration is one-way and users end up with a single Google connection instead of overlapping ones.
+        var mutualState = { drive: null, gmail: null, calendar: null, workspace: null };
+
+        function applyWorkspaceLockout() {
+            if (mutualState.workspace !== false) return;
+            var blockers = [];
+            if (mutualState.drive === true)    blockers.push('Google Drive');
+            if (mutualState.gmail === true)    blockers.push('Gmail');
+            if (mutualState.calendar === true) blockers.push('Google Calendar');
+            if (blockers.length === 0) return;
+            var status = document.getElementById('gws-status');
+            var actions = document.getElementById('gws-actions');
+            if (!status || !actions) return;
+            var list = blockers.length === 1
+                ? blockers[0] + ' is'
+                : blockers.slice(0, -1).join(', ') + ' and ' + blockers[blockers.length - 1] + ' are';
+            status.className = 'status disconnected';
+            status.innerHTML = 'Not connected. <strong>' + list + ' still connected</strong> — disconnect ' +
+                (blockers.length === 1 ? 'it' : 'them') +
+                ' before connecting Google Workspace (Workspace replaces the individual Drive, Gmail, and Calendar connectors).';
+            actions.innerHTML = '<button class="btn btn-primary" disabled title="Disconnect ' + blockers.join(', ') + ' first" style="opacity:0.5; cursor:not-allowed;">Connect to Google Workspace</button>';
+        }
+
+        // Fresh connects on the deprecated Drive, Gmail, and Calendar cards are always blocked — no one
+        // should adopt these as new; the Google Workspace connector is the supported path. Existing
+        // connections are left alone (Disconnect/Test still work); only the disconnected → Connect action
+        // is disabled.
+        function applyDeprecatedLockout(prefix, label) {
+            var flag = { gdrive: 'drive', gmail: 'gmail', gcal: 'calendar' }[prefix];
+            if (mutualState[flag] !== false) return;
+            var status = document.getElementById(prefix + '-status');
+            var actions = document.getElementById(prefix + '-actions');
+            if (!status || !actions) return;
+            status.className = 'status disconnected';
+            status.innerHTML = 'Not connected. This connector is <strong>deprecated</strong> — use the <em>Google Workspace</em> card instead (it covers ' + label + ').';
+            actions.innerHTML = '<button class="btn btn-primary" disabled title="Deprecated — use Google Workspace instead" style="opacity:0.5; cursor:not-allowed;">Connect to ' + label + '</button>';
+        }
+
+        function renderGDriveStatus(data)       { mutualState.drive = data.connected;     renderStatus('gdrive',  data, '/googledrive/oauth/test',     '/googledrive/oauth/token',     '/googledrive/oauth/connect',     '/googledrive/oauth/disconnect',     'Connect to Google Drive'); applyWorkspaceLockout(); applyDeprecatedLockout('gdrive', 'Google Drive'); }
+        function renderGmailStatus(data)        { mutualState.gmail = data.connected;     renderStatus('gmail',   data, '/gmail/oauth/test',           '/gmail/oauth/token',           '/gmail/oauth/connect',           '/gmail/oauth/disconnect',           'Connect to Gmail'); applyWorkspaceLockout(); applyDeprecatedLockout('gmail', 'Gmail'); }
+        function renderGCalStatus(data)         { mutualState.calendar = data.connected;  renderStatus('gcal',    data, '/google-calendar/oauth/test', '/google-calendar/oauth/token', '/google-calendar/oauth/connect', '/google-calendar/oauth/disconnect', 'Connect to Google Calendar'); applyWorkspaceLockout(); applyDeprecatedLockout('gcal', 'Google Calendar'); }
+        function renderGWorkspaceStatus(data)    {
+            mutualState.workspace = data.connected;
+            renderStatus('gws', data, '/googleworkspace/oauth/test', '/googleworkspace/oauth/token', '/googleworkspace/oauth/connect', '/googleworkspace/oauth/disconnect', 'Connect to Google Workspace');
+            applyWorkspaceLockout();
+            // Workspace state changed — re-apply deprecated lockouts too so they pick up the new state.
+            applyDeprecatedLockout('gdrive', 'Google Drive');
+            applyDeprecatedLockout('gmail',  'Gmail');
+            applyDeprecatedLockout('gcal',   'Google Calendar');
+        }
         function renderGroundcoverStatus(data)  { renderStatus('gc',      data, '/groundcover/test',           '/groundcover/token',           '/groundcover/connect',           '/groundcover/disconnect',           'Connect to Groundcover'); }
         function renderHubspotStatus(data)      { renderStatus('hubspot', data, '/hubspot/oauth/test',         '/hubspot/oauth/token',         '/hubspot/oauth/connect',         '/hubspot/oauth/disconnect',         'Connect to HubSpot'); }
 
