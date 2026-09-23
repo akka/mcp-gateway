@@ -118,7 +118,7 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
         var token = createSession("test@lightbend.com", "Test User", List.of("mcp-users"));
 
         var response = httpClient.GET("/auth/me")
-                .addHeader("Authorization", "Bearer " + token)
+                .addHeader("Cookie", "SESSION=" + token)
                 .responseBodyAs(AuthEndpoint.MeResponse.class)
                 .invoke();
 
@@ -134,7 +134,7 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
         var token = createSession("test@lightbend.com", "Test User", List.of("mcp-gateway-admin"));
 
         var response = httpClient.GET("/auth/permissions")
-                .addHeader("Authorization", "Bearer " + token)
+                .addHeader("Cookie", "SESSION=" + token)
                 .responseBodyAs(String.class)
                 .invoke();
 
@@ -146,7 +146,7 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
         var token = createSession("test@lightbend.com", "Test User", List.of());
 
         var response = httpClient.GET("/auth/permissions")
-                .addHeader("Authorization", "Bearer " + token)
+                .addHeader("Cookie", "SESSION=" + token)
                 .responseBodyAs(String.class)
                 .invoke();
 

@@ -48,7 +48,7 @@ Two variables are shared by every system and must always be set: `ANTHROPIC_API_
 Access control is also configured through the environment — none of these have built-in defaults, so the gateway fails closed until you set them:
 - `OKTA_ALLOWED_EMAIL_DOMAIN` — the email domain users must sign in with (e.g. `example.com`). Leave unset to allow any Okta-authenticated email.
 - `OKTA_GROUP_READER`, `OKTA_GROUP_WRITER`, `OKTA_GROUP_ADMIN`, `OKTA_GROUP_ESCALATER` — the Okta group names that grant each gateway role (see [Access and permissions](#access-and-permissions)). A role with no group set is granted to nobody.
-- `MCP_OAUTH_REDIRECT_HOST_ALLOWLIST` — comma-separated hostnames allowed for `https://` `redirect_uris` when an MCP client dynamically registers itself (e.g. `claude.ai,claude.com`). Loopback redirect URIs (`127.0.0.1`, `localhost`, `[::1]`) are always allowed, per RFC 8252. Leave unset to accept any https host; set it in production to restrict registration to your own clients.
+- `MCP_OAUTH_REDIRECT_HOST_ALLOWLIST` — comma-separated hostnames allowed for `https://` `redirect_uris` when an MCP client dynamically registers itself (e.g. `claude.ai,claude.com`). Loopback redirect URIs (`127.0.0.1`, `localhost`, `[::1]`) are always allowed, per RFC 8252. Leave unset to reject every https redirect host, so only loopback clients can register; production deployments serving hosted clients such as claude.ai must set it.
 
 Each system is also gated by an Okta application, identified by its app instance id in `<SYSTEM>_OKTA_APP_ID` (listed per system below). Leaving one unset disables app-gating for that system (it appears accessible to everyone who can otherwise reach it).
 
