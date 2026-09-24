@@ -4,7 +4,7 @@ One place to connect your AI assistant to the tools Akka runs on.
 
 ## What it is
 
-The MCP Gateway is a single, company-managed connection point between AI assistants — Claude Code, Claude Desktop, and other MCP clients — and the business systems we use every day, such as Zoho Desk, Salesforce, Google Drive, Reo, and Groundcover.
+The MCP Gateway is a single, company-managed connection point between AI assistants — Claude Code, Claude Desktop, and other MCP clients — and the business systems we use every day, such as Zoho Desk, Salesforce, Google Workspace, Reo, and Groundcover.
 
 Instead of setting up and maintaining a separate connection for every system, you connect your assistant to the gateway once. From then on, the assistant can work with whichever systems you have access to, and you can ask questions in plain language: *"What support tickets came in today?"*, *"Find the contract we signed with this customer."*
 
@@ -68,21 +68,39 @@ Optional support-contact settings surface in the "request an integration" help t
 - `AKKA_SALESFORCE_MCP_URL` *(optional — our own MCP server complementing Salesforce with additional tools, e.g. downloading Opportunity attachments; reuses the Salesforce connection above)*
 - `AKKA_SALESFORCE_OKTA_APP_ID` *(optional — defaults to `SALESFORCE_OKTA_APP_ID`)*
 
-**Google Drive** — documents and files.
+**Google Workspace** — Drive, Docs, Gmail, and Calendar behind one OAuth grant.
+
+One OAuth client covers all four Google products, so files created via Drive are reachable
+from Docs and vice-versa (the `drive.file` allowlist is keyed to the OAuth client-id — see
+[Google's Workspace MCP guide](https://developers.google.com/workspace/guides/configure-mcp-servers)).
+Configure a single OAuth application in Google Cloud with the union of Drive/Docs/Gmail/Calendar
+scopes and point every user at the "Google Workspace" card on the dashboard.
+
+- `GOOGLE_WORKSPACE_CLIENT_ID`
+- `GOOGLE_WORKSPACE_CLIENT_SECRET`
+- `GOOGLE_WORKSPACE_REDIRECT_URI`
+- `GOOGLE_WORKSPACE_OKTA_APP_ID` *(optional — defaults to `GOOGLE_DRIVE_OKTA_APP_ID`)*
+- `GOOGLE_WORKSPACE_DRIVE_MCP_URL` *(optional — defaults to `https://drivemcp.googleapis.com/mcp/v1`)*
+- `GOOGLE_WORKSPACE_DOCS_MCP_URL` *(optional — defaults to `https://docsmcp.googleapis.com/mcp/v1`)*
+- `GOOGLE_WORKSPACE_GMAIL_MCP_URL` *(optional — defaults to `https://gmailmcp.googleapis.com/mcp/v1`)*
+- `GOOGLE_WORKSPACE_CALENDAR_MCP_URL` *(optional — defaults to `https://calendarmcp.googleapis.com/mcp/v1`)*
+
+**Google Drive** *(deprecated — use Google Workspace)* — retained so existing operators keep
+working; new deployments should not set these.
 - `GOOGLE_DRIVE_MCP_URL`
 - `GOOGLE_DRIVE_CLIENT_ID`
 - `GOOGLE_DRIVE_CLIENT_SECRET`
 - `GOOGLE_DRIVE_REDIRECT_URI`
-- `GOOGLE_DRIVE_OKTA_APP_ID` — the shared Google app instance id (Drive, Gmail, and Calendar all use it).
+- `GOOGLE_DRIVE_OKTA_APP_ID` — the shared Google app instance id (Drive, Gmail, Calendar all use it).
 
-**Gmail** — mail search and threads.
+**Gmail** *(deprecated — use Google Workspace)* — retained for existing operators.
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REDIRECT_URI`
 - `GMAIL_MCP_URL` *(optional — defaults to Google's hosted server)*
 - `GMAIL_OKTA_APP_ID` *(optional — defaults to `GOOGLE_DRIVE_OKTA_APP_ID`)*
 
-**Google Calendar** — events and schedules.
+**Google Calendar** *(deprecated — use Google Workspace)* — retained for existing operators.
 - `GOOGLE_CALENDAR_CLIENT_ID`
 - `GOOGLE_CALENDAR_CLIENT_SECRET`
 - `GOOGLE_CALENDAR_REDIRECT_URI`
@@ -147,14 +165,14 @@ Every system is tied to an Okta application. Being assigned that application is 
 |---|---|
 | Zoho Desk | Zoho Desk |
 | Salesforce | Salesforce |
-| Google Drive, Gmail, Google Calendar | a single shared Google application |
+| Google Workspace (Drive, Docs, Gmail, Calendar) | a single shared Google application |
 | Slack | Slack |
 | HubSpot | HubSpot |
 | Reo | Reo |
 | Groundcover | Groundcover |
 | Okta admin lookups | Okta MCP Admin |
 
-Because Drive, Gmail, and Calendar share one Google application, being assigned it makes all three appear at once — they cannot currently be granted separately.
+Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
 
 ### Connecting is still per-person
 

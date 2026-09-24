@@ -17,6 +17,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -50,6 +51,11 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
     protected abstract Optional<String> fetchAccessToken(String email);
     protected abstract String getProviderLabel();
     protected abstract RemoteMcpClient createMcpClient();
+
+    /** Every MCP client to prime after a successful connect. Defaults to just {@link #createMcpClient()};
+     *  connectors that fan a single OAuth grant out to several downstream MCP servers (e.g. Google Workspace)
+     *  override this to warm all of them. */
+    protected List<RemoteMcpClient> mcpClientsToWarm() { return List.of(createMcpClient()); }
 
     protected String getExtraAuthParams() { return ""; }
 
@@ -124,7 +130,9 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
 
             storeToken(session.email(), accessToken, refreshToken, expiresAt, state);
             recordConnectionEvent(session.email(), "connect-success", null);
-            warmRegistryCache(createMcpClient(), session.email());
+            for (var mcpClient : mcpClientsToWarm()) {
+                warmRegistryCache(mcpClient, session.email());
+            }
 
         } catch (Exception e) {
             recordConnectionEvent(session.email(), "connect-failed", "Token exchange exception: " + e.getMessage());
