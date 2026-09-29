@@ -3,6 +3,7 @@ package io.akka.mcp.gateway.api;
 import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKitSupport;
 import io.akka.mcp.gateway.application.GoogleDriveConnectionEntity;
+import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
@@ -29,6 +30,16 @@ public class GoogleWorkspaceEndpointIntegrationTest extends TestKitSupport {
                 .method(UserSessionEntity::create)
                 .invoke(new UserSessionEntity.CreateCommand(
                         email, "User", Instant.now().plusSeconds(3600), groups, "", List.of()));
+        return token;
+    }
+
+    /** An MCP client's Bearer token — what {@code POST /mcp} accepts (a browser session is not). */
+    private String createMcpAccessToken(List<String> groups) {
+        var token = UUID.randomUUID().toString();
+        componentClient.forKeyValueEntity(token)
+                .method(McpAccessTokenEntity::create)
+                .invoke(new McpAccessTokenEntity.CreateCommand(
+                        "user@lightbend.com", "User", groups, List.of(), "client-1", Instant.now().plusSeconds(3600)));
         return token;
     }
 
@@ -77,7 +88,7 @@ public class GoogleWorkspaceEndpointIntegrationTest extends TestKitSupport {
     public void workspaceStatus_withSession_returnsDisconnected() throws Exception {
         var token = createSession(List.of());
         var response = httpClient.GET("/googleworkspace/oauth/status")
-                .addHeader("Authorization", "Bearer " + token)
+                .addHeader("Cookie", "SESSION=" + token)
                 .responseBodyAs(String.class)
                 .invoke();
         assertThat(response.status().isSuccess()).isTrue();
@@ -120,7 +131,7 @@ public class GoogleWorkspaceEndpointIntegrationTest extends TestKitSupport {
                     .invoke(new McpConfig(c.mcpId(), c.mcpName(), List.of(toolMeta)));
         }
 
-        var token = createSession(List.of());
+        var token = createMcpAccessToken(List.of());
         Map<String, Object> request = Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list");
 
         var response = httpClient.POST("/mcp")
