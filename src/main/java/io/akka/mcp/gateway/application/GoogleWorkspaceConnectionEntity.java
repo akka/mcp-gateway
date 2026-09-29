@@ -97,6 +97,9 @@ public class GoogleWorkspaceConnectionEntity extends KeyValueEntity<GoogleWorksp
 
         var json = MAPPER.readTree(resp.body());
         String newAccessToken = json.path("access_token").asText();
+        if (newAccessToken.isBlank()) {
+            throw new RuntimeException("refresh response has no access_token");
+        }
         String newRefreshToken = json.path("refresh_token").asText(connection.refreshToken());
         long expiresIn = json.path("expires_in").asLong(3600);
 
