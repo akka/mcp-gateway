@@ -1,13 +1,18 @@
 package io.akka.mcp.gateway.api;
 
 import akka.javasdk.testkit.TestKitSupport;
+import io.akka.mcp.gateway.application.OAuthAuthorizationCodeEntity;
+import io.akka.mcp.gateway.application.OAuthClientEntity;
+import io.akka.mcp.gateway.application.UserSessionEntity;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -110,6 +115,77 @@ public class McpOAuthEndpointIntegrationTest extends TestKitSupport {
 
         assertThat(resp.statusCode()).isEqualTo(400);
         assertThat(resp.body()).contains("invalid_grant");
+    }
+
+    // ── Token endpoint — mint guard: the browser session backing a valid, unused, unexpired ──
+    // ── authorization code must still be alive at redemption time. ──────────────────────────
+
+    private record AuthCodeFixture(String clientId, String code, String verifier, String redirectUri) {}
+
+    private AuthCodeFixture authCodeBackedBySession(String sessionToken) {
+        String clientId = UUID.randomUUID().toString();
+        String redirectUri = "http://127.0.0.1:1234/callback";
+        componentClient.forKeyValueEntity(clientId)
+                .method(OAuthClientEntity::register)
+                .invoke(new OAuthClientEntity.RegisterCommand(clientId, "Test Client", redirectUri));
+
+        String verifier = "test-verifier-1234567890123456789012345678901234567890";
+        String code = UUID.randomUUID().toString();
+        componentClient.forKeyValueEntity(code)
+                .method(OAuthAuthorizationCodeEntity::create)
+                .invoke(new OAuthAuthorizationCodeEntity.CreateCommand(
+                        code, clientId, sessionToken, redirectUri,
+                        McpOAuthEndpoint.pkceChallenge(verifier), "S256", "mcp:read",
+                        Instant.now().plusSeconds(600)));
+
+        return new AuthCodeFixture(clientId, code, verifier, redirectUri);
+    }
+
+    private HttpResponse<String> redeem(AuthCodeFixture fixture) throws Exception {
+        return postForm("/oauth2/token",
+                "grant_type=authorization_code&code=" + fixture.code()
+                        + "&redirect_uri=" + java.net.URLEncoder.encode(fixture.redirectUri(), java.nio.charset.StandardCharsets.UTF_8)
+                        + "&client_id=" + fixture.clientId()
+                        + "&code_verifier=" + fixture.verifier());
+    }
+
+    @Test
+    public void token_authCodeGrant_withExpiredBackingSession_returnsInvalidGrant() throws Exception {
+        String sessionToken = UUID.randomUUID().toString();
+        componentClient.forKeyValueEntity(sessionToken)
+                .method(UserSessionEntity::create)
+                .invoke(new UserSessionEntity.CreateCommand(
+                        "user@lightbend.com", "User", Instant.now().minusSeconds(60), List.of(), "", List.of()));
+
+        var resp = redeem(authCodeBackedBySession(sessionToken));
+
+        assertThat(resp.statusCode()).isEqualTo(400);
+        assertThat(resp.body()).contains("invalid_grant");
+    }
+
+    @Test
+    public void token_authCodeGrant_withGoneBackingSession_returnsInvalidGrant() throws Exception {
+        // Session token never existed (e.g. the user logged out between consent and redemption).
+        String sessionToken = UUID.randomUUID().toString();
+
+        var resp = redeem(authCodeBackedBySession(sessionToken));
+
+        assertThat(resp.statusCode()).isEqualTo(400);
+        assertThat(resp.body()).contains("invalid_grant");
+    }
+
+    @Test
+    public void token_authCodeGrant_withValidBackingSession_returnsAccessToken() throws Exception {
+        String sessionToken = UUID.randomUUID().toString();
+        componentClient.forKeyValueEntity(sessionToken)
+                .method(UserSessionEntity::create)
+                .invoke(new UserSessionEntity.CreateCommand(
+                        "user@lightbend.com", "User", Instant.now().plusSeconds(3600), List.of(), "", List.of()));
+
+        var resp = redeem(authCodeBackedBySession(sessionToken));
+
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(resp.body()).contains("access_token").contains("refresh_token");
     }
 
     // ── Authorize endpoint — missing params ─────────────────────────────────
