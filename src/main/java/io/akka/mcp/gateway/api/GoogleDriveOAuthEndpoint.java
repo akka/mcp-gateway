@@ -82,5 +82,11 @@ public class GoogleDriveOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     }
 
     @Override protected String getProviderLabel() { return "Google Drive"; }
+
+    // Deprecated in favour of Google Workspace: existing connections keep working, new ones are refused.
+    @Override
+    protected Optional<String> connectBlockedReason(String email) {
+        return Optional.of(GoogleWorkspaceOAuthEndpoint.deprecatedConnectorMessage(getProviderLabel()));
+    }
     @Override protected RemoteMcpClient createMcpClient() { return new GoogleDriveMcpClient(componentClient, googleDriveMcpUrl, oktaAppId); }
 }

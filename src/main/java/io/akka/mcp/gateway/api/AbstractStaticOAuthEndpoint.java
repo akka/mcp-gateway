@@ -59,6 +59,10 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
 
     protected String getExtraAuthParams() { return ""; }
 
+    /** When present, {@code /connect} refuses with 409 and this message instead of starting OAuth.
+     *  Enforced server-side so a dashboard-only lockout can't be bypassed by hitting the URL directly. */
+    protected Optional<String> connectBlockedReason(String email) { return Optional.empty(); }
+
     protected String extractAccessToken(com.fasterxml.jackson.databind.JsonNode tokenJson) {
         return tokenJson.path("access_token").asText();
     }
@@ -151,6 +155,13 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
     public HttpResponse connect() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
+        var blocked = connectBlockedReason(session.email());
+        if (blocked.isPresent()) {
+            recordConnectionEvent(session.email(), "connect-blocked", blocked.get());
+            return HttpResponse.create()
+                    .withStatus(StatusCodes.CONFLICT)
+                    .withEntity(akka.http.javadsl.model.ContentTypes.TEXT_PLAIN_UTF8, blocked.get());
+        }
         if (getClientId().isBlank()) {
             return HttpResponses.internalServerError(getProviderLabel() + " client ID is not configured.");
         }

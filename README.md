@@ -85,6 +85,10 @@ scopes and point every user at the "Google Workspace" card on the dashboard.
 - `GOOGLE_WORKSPACE_GMAIL_MCP_URL` *(optional — defaults to `https://gmailmcp.googleapis.com/mcp/v1`)*
 - `GOOGLE_WORKSPACE_CALENDAR_MCP_URL` *(optional — defaults to `https://calendarmcp.googleapis.com/mcp/v1`)*
 
+The deprecated Drive, Gmail, and Calendar connectors refuse new connections (`/connect` returns 409);
+existing connections keep working until disconnected. Google Workspace likewise refuses to connect
+while any of them is still connected, so each user ends up with a single Google connection.
+
 **Google Drive** *(deprecated — use Google Workspace)* — retained so existing operators keep
 working; new deployments should not set these.
 - `GOOGLE_DRIVE_MCP_URL`

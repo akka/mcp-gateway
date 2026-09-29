@@ -4,6 +4,9 @@ import akka.javasdk.annotations.Acl;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
 import com.typesafe.config.Config;
+import io.akka.mcp.gateway.application.GmailConnectionEntity;
+import io.akka.mcp.gateway.application.GoogleCalendarConnectionEntity;
+import io.akka.mcp.gateway.application.GoogleDriveConnectionEntity;
 import io.akka.mcp.gateway.application.GoogleWorkspaceConnectionEntity;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceCalendarMcpClient;
@@ -11,6 +14,7 @@ import io.akka.mcp.gateway.application.WorkspaceDocsMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceDriveMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceGmailMcpClient;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -111,6 +115,26 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     }
 
     @Override protected String getProviderLabel() { return "Google Workspace"; }
+
+    static String deprecatedConnectorMessage(String label) {
+        return label + " is deprecated and can no longer be connected. Use Google Workspace instead.";
+    }
+
+    // Workspace replaces the individual Drive/Gmail/Calendar connectors; refuse to stack a Workspace grant
+    // on top of one of them so each user ends up with a single Google connection.
+    @Override
+    protected Optional<String> connectBlockedReason(String email) {
+        var stillConnected = new ArrayList<String>();
+        if (componentClient.forKeyValueEntity(email).method(GoogleDriveConnectionEntity::getStatus).invoke().isConnected())
+            stillConnected.add("Google Drive");
+        if (componentClient.forKeyValueEntity(email).method(GmailConnectionEntity::getStatus).invoke().isConnected())
+            stillConnected.add("Gmail");
+        if (componentClient.forKeyValueEntity(email).method(GoogleCalendarConnectionEntity::getStatus).invoke().isConnected())
+            stillConnected.add("Google Calendar");
+        if (stillConnected.isEmpty()) return Optional.empty();
+        return Optional.of("Disconnect " + String.join(", ", stillConnected)
+                + " before connecting Google Workspace — it replaces the individual Google connectors.");
+    }
 
     // /test uses this — Docs is a representative sanity check for the shared connection.
     @Override

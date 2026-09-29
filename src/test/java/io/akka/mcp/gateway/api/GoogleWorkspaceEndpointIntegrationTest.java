@@ -2,6 +2,7 @@ package io.akka.mcp.gateway.api;
 
 import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKitSupport;
+import io.akka.mcp.gateway.application.GoogleDriveConnectionEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
@@ -19,12 +20,57 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 public class GoogleWorkspaceEndpointIntegrationTest extends TestKitSupport {
 
     private String createSession(List<String> groups) {
+        return createSession("user@lightbend.com", groups);
+    }
+
+    private String createSession(String email, List<String> groups) {
         var token = UUID.randomUUID().toString();
         componentClient.forKeyValueEntity(token)
                 .method(UserSessionEntity::create)
                 .invoke(new UserSessionEntity.CreateCommand(
-                        "user@lightbend.com", "User", Instant.now().plusSeconds(3600), groups, "", List.of()));
+                        email, "User", Instant.now().plusSeconds(3600), groups, "", List.of()));
         return token;
+    }
+
+    private String connectErrorFor(String path, String sessionToken) {
+        var ex = assertThrows(Exception.class, () ->
+                httpClient.GET(path)
+                        .addHeader("Cookie", "SESSION=" + sessionToken)
+                        .responseBodyAs(String.class)
+                        .invoke());
+        return ex.getMessage();
+    }
+
+    /** The dashboard greys out Connect on the deprecated cards; the backend must refuse too. */
+    @Test
+    public void deprecatedGoogleConnectors_refuseNewConnections() {
+        var token = createSession("deprecated-connect@lightbend.com", List.of());
+        for (var path : List.of("/googledrive/oauth/connect", "/gmail/oauth/connect", "/google-calendar/oauth/connect")) {
+            assertThat(connectErrorFor(path, token)).as(path).contains("409").contains("deprecated");
+        }
+    }
+
+    @Test
+    public void workspaceConnect_whileDeprecatedConnectorConnected_isRefused() {
+        var email = "stacked-connect@lightbend.com";
+        componentClient.forKeyValueEntity(email).method(GoogleDriveConnectionEntity::initiatePkceOAuth)
+                .invoke(new GoogleDriveConnectionEntity.InitiateCommand("s", "v", "client-id", "https://token.example.com"));
+        componentClient.forKeyValueEntity(email).method(GoogleDriveConnectionEntity::storeToken)
+                .invoke(new GoogleDriveConnectionEntity.StoreTokenCommand(
+                        "drive-access", "drive-refresh", Instant.now().plusSeconds(3600), "s"));
+
+        var message = connectErrorFor("/googleworkspace/oauth/connect", createSession(email, List.of()));
+
+        assertThat(message).contains("409").contains("Disconnect Google Drive");
+    }
+
+    @Test
+    public void workspaceConnect_withoutDeprecatedConnectors_isNotBlocked() {
+        // No client-id configured in tests, so connect proceeds past the lockout and fails on config.
+        var message = connectErrorFor("/googleworkspace/oauth/connect",
+                createSession("fresh-connect@lightbend.com", List.of()));
+
+        assertThat(message).doesNotContain("409").contains("client ID is not configured");
     }
 
     @Test
