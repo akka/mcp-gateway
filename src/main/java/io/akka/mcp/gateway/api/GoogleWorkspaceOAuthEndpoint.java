@@ -23,16 +23,23 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
 
     // Union of scopes for Drive, Docs, Gmail, Calendar — grant them together under one client-id so a file
     // touched by one product's MCP is reachable from the others (drive.file is per-client-id, not per-server).
+    // Narrowest set covering the hosted servers' tools, per
+    // https://developers.google.com/workspace/guides/configure-mcp-servers — no full `drive`, no
+    // `https://mail.google.com/` (permanent delete), no full `calendar` (calendar settings/ACLs).
     private static final String GOOGLE_WORKSPACE_SCOPE = String.join(" ",
             "openid",
             "email",
-            "https://www.googleapis.com/auth/drive",
+            // Drive + Docs: read anything, write only files the app created or the user opened with it
             "https://www.googleapis.com/auth/drive.readonly",
             "https://www.googleapis.com/auth/drive.file",
             "https://www.googleapis.com/auth/documents",
-            "https://www.googleapis.com/auth/documents.readonly",
-            "https://mail.google.com/",
-            "https://www.googleapis.com/auth/calendar");
+            // Gmail: search/read, drafts, labels
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.compose",
+            // Calendar: list calendars, read/write events, free/busy
+            "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+            "https://www.googleapis.com/auth/calendar.events",
+            "https://www.googleapis.com/auth/calendar.events.freebusy");
 
     private final String workspaceRedirectUri;
     private final String workspaceClientId;
