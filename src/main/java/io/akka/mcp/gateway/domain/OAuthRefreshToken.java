@@ -10,10 +10,16 @@ public record OAuthRefreshToken(
         String clientId,
         List<String> groups,
         Instant expiresAt,
-        boolean revoked
+        boolean revoked,
+        List<UserSession.App> apps,
+        String idToken
 ) {
     public static OAuthRefreshToken empty() {
-        return new OAuthRefreshToken(null, null, null, null, List.of(), null, false);
+        return new OAuthRefreshToken(null, null, null, null, List.of(), null, false, List.of(), null);
+    }
+
+    public List<UserSession.App> apps() {
+        return apps != null ? apps : List.of();
     }
 
     public boolean isEmpty()  { return token == null; }

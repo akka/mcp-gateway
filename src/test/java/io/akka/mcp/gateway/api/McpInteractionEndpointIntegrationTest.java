@@ -1,12 +1,15 @@
 package io.akka.mcp.gateway.api;
 
 import akka.javasdk.testkit.TestKitSupport;
+import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpInteractionEntity;
 import io.akka.mcp.gateway.application.McpInteractionsByMcpView;
 import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +24,30 @@ public class McpInteractionEndpointIntegrationTest extends TestKitSupport {
         assertThrows(Exception.class, () ->
                 httpClient.GET("/interactions/user/any-user").responseBodyAs(String.class).invoke()
         );
+    }
+
+    /**
+     * The other direction of the account-takeover fix: an MCP client's access token must not
+     * work as a browser session, even for an admin who holds the required Okta group. This route
+     * only calls {@code requireSession()}, which looks at the {@code SESSION} cookie only —
+     * a Bearer header is silently ignored, so the request falls through as unauthenticated.
+     */
+    @Test
+    public void getByUser_withMcpAccessTokenInsteadOfSessionCookie_isRejected() {
+        var mcpToken = UUID.randomUUID().toString();
+        componentClient.forKeyValueEntity(mcpToken)
+                .method(McpAccessTokenEntity::create)
+                .invoke(new McpAccessTokenEntity.CreateCommand(
+                        "admin@lightbend.com", "Admin", List.of("mcp-gateway-admin"), List.of(),
+                        "client-1", Instant.now().plusSeconds(3600)));
+
+        // requireSession() ignores the Authorization header entirely, so this is rejected exactly
+        // like an unauthenticated request (redirect to /login) rather than being honored as auth.
+        assertThrows(Exception.class, () ->
+                httpClient.GET("/interactions/user/any-user")
+                        .addHeader("Authorization", "Bearer " + mcpToken)
+                        .responseBodyAs(String.class)
+                        .invoke());
     }
 
     @Test

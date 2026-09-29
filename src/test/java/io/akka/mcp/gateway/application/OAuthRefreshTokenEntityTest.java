@@ -1,6 +1,7 @@
 package io.akka.mcp.gateway.application;
 
 import akka.javasdk.testkit.KeyValueEntityTestKit;
+import io.akka.mcp.gateway.domain.UserSession;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -13,7 +14,8 @@ public class OAuthRefreshTokenEntityTest {
     private static OAuthRefreshTokenEntity.CreateCommand createCmd(Instant expiresAt) {
         return new OAuthRefreshTokenEntity.CreateCommand(
                 "token-xyz", "user@lightbend.com", "Alice",
-                "client-1", List.of("group-a"), expiresAt);
+                "client-1", List.of("group-a"), expiresAt,
+                List.of(new UserSession.App("app-1", "App One")), "id-token-xyz");
     }
 
     @Test
@@ -29,6 +31,8 @@ public class OAuthRefreshTokenEntityTest {
         assertThat(state.displayName()).isEqualTo("Alice");
         assertThat(state.clientId()).isEqualTo("client-1");
         assertThat(state.groups()).containsExactly("group-a");
+        assertThat(state.apps()).containsExactly(new UserSession.App("app-1", "App One"));
+        assertThat(state.idToken()).isEqualTo("id-token-xyz");
         assertThat(state.revoked()).isFalse();
         assertThat(state.isEmpty()).isFalse();
     }
@@ -53,6 +57,8 @@ public class OAuthRefreshTokenEntityTest {
 
         assertThat(result.isReply()).isTrue();
         assertThat(testKit.getState().revoked()).isTrue();
+        assertThat(testKit.getState().apps()).containsExactly(new UserSession.App("app-1", "App One"));
+        assertThat(testKit.getState().idToken()).isEqualTo("id-token-xyz");
     }
 
     @Test
