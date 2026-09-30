@@ -37,7 +37,8 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
             "https://www.googleapis.com/auth/drive.readonly",
             "https://www.googleapis.com/auth/drive.file",
             "https://www.googleapis.com/auth/documents",
-            // Gmail: search/read, drafts, labels
+            // Gmail: search/read and drafts. No gmail.modify, so applying/removing labels is deliberately
+            // unsupported. Note gmail.compose also permits sending mail.
             "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/gmail.compose",
             // Calendar: list calendars, read/write events, free/busy

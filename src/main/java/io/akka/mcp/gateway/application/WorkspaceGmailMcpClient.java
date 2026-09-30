@@ -50,7 +50,7 @@ public class WorkspaceGmailMcpClient implements RemoteMcpClient {
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(
                 "How the Google Workspace connector exposes Gmail.",
-                "Search threads, read messages, manage labels and drafts",
+                "Search threads, read messages, manage drafts",
                 """
                 # Gmail (via the Google Workspace connector)
 
@@ -65,7 +65,6 @@ public class WorkspaceGmailMcpClient implements RemoteMcpClient {
 
                 ## Available capabilities
                 - Search threads, read messages and threads, list labels
-                - Apply and remove labels on messages and threads
                 - Create and list drafts
 
                 Write tools require the `mcp-gateway-writer` role.
