@@ -48,6 +48,12 @@ public class GmailOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     @Override protected String getAuthorizationEndpoint() { return GOOGLE_AUTH_ENDPOINT; }
     @Override protected String getTokenEndpoint() { return GOOGLE_TOKEN_ENDPOINT; }
     @Override protected String getProviderLabel() { return "Gmail"; }
+
+    // Deprecated in favour of Google Workspace: existing connections keep working, new ones are refused.
+    @Override
+    protected Optional<String> connectBlockedReason(String email) {
+        return Optional.of(GoogleWorkspaceOAuthEndpoint.deprecatedConnectorMessage(getProviderLabel()));
+    }
     @Override protected String getScope() { return "https://mail.google.com/"; }
 
     // Request offline access so Google issues a refresh token

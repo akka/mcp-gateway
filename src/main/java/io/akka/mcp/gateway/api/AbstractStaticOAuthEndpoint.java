@@ -17,6 +17,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,7 +52,16 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
     protected abstract String getProviderLabel();
     protected abstract RemoteMcpClient createMcpClient();
 
+    /** Every MCP client to prime after a successful connect. Defaults to just {@link #createMcpClient()};
+     *  connectors that fan a single OAuth grant out to several downstream MCP servers (e.g. Google Workspace)
+     *  override this to warm all of them. */
+    protected List<RemoteMcpClient> mcpClientsToWarm() { return List.of(createMcpClient()); }
+
     protected String getExtraAuthParams() { return ""; }
+
+    /** When present, {@code /connect} refuses with 409 and this message instead of starting OAuth.
+     *  Enforced server-side so a dashboard-only lockout can't be bypassed by hitting the URL directly. */
+    protected Optional<String> connectBlockedReason(String email) { return Optional.empty(); }
 
     protected String extractAccessToken(com.fasterxml.jackson.databind.JsonNode tokenJson) {
         return tokenJson.path("access_token").asText();
@@ -124,7 +134,9 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
 
             storeToken(session.email(), accessToken, refreshToken, expiresAt, state);
             recordConnectionEvent(session.email(), "connect-success", null);
-            warmRegistryCache(createMcpClient(), session.email());
+            for (var mcpClient : mcpClientsToWarm()) {
+                warmRegistryCache(mcpClient, session.email());
+            }
 
         } catch (Exception e) {
             recordConnectionEvent(session.email(), "connect-failed", "Token exchange exception: " + e.getMessage());
@@ -143,6 +155,13 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
     public HttpResponse connect() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
+        var blocked = connectBlockedReason(session.email());
+        if (blocked.isPresent()) {
+            recordConnectionEvent(session.email(), "connect-blocked", blocked.get());
+            return HttpResponse.create()
+                    .withStatus(StatusCodes.CONFLICT)
+                    .withEntity(akka.http.javadsl.model.ContentTypes.TEXT_PLAIN_UTF8, blocked.get());
+        }
         if (getClientId().isBlank()) {
             return HttpResponses.internalServerError(getProviderLabel() + " client ID is not configured.");
         }

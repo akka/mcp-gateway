@@ -48,6 +48,12 @@ public class GoogleCalendarOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     @Override protected String getAuthorizationEndpoint() { return GOOGLE_AUTH_ENDPOINT; }
     @Override protected String getTokenEndpoint() { return GOOGLE_TOKEN_ENDPOINT; }
     @Override protected String getProviderLabel() { return "Google Calendar"; }
+
+    // Deprecated in favour of Google Workspace: existing connections keep working, new ones are refused.
+    @Override
+    protected Optional<String> connectBlockedReason(String email) {
+        return Optional.of(GoogleWorkspaceOAuthEndpoint.deprecatedConnectorMessage(getProviderLabel()));
+    }
     @Override protected String getScope() { return "https://www.googleapis.com/auth/calendar"; }
 
     @Override
