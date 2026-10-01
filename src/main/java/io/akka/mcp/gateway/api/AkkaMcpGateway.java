@@ -89,7 +89,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                 new GmailMcpClient(componentClient, config.getString("gmail.mcp-url"), config.getString("gmail.okta-app-id")),
                 new GoogleCalendarMcpClient(componentClient, config.getString("google-calendar.mcp-url"), config.getString("google-calendar.okta-app-id")),
                 new HubspotMcpClient(componentClient, config.getString("hubspot.mcp-url"), config.getString("hubspot.okta-app-id")),
-                new SeamlessMcpClient(config.getString("seamless.mcp-url"), config.getString("seamless.api-key")),
+                new SeamlessMcpClient(config.getString("seamless.mcp-url"), config.getString("seamless.api-key"), config.getString("seamless.okta-app-id")),
                 new OktaMcpClient(config.getString("okta-admin.mcp-url"), httpClientProvider, config.getString("okta-admin.okta-app-id"))
         );
         this.clients = new ArrayList<>(serviceClients);
