@@ -40,12 +40,6 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
     protected abstract String getMcpUrl();
     protected abstract String getRedirectUri();
     protected abstract String getProviderLabel();
-
-    /** OAuth scope to request; blank (default) omits the parameter. */
-    protected String getScope() { return ""; }
-
-    /** Grant types to register during dynamic client registration. */
-    protected List<String> getGrantTypes() { return List.of("authorization_code"); }
     protected abstract void storePendingOAuth(String email, String state, String codeVerifier, String clientId, String tokenEndpoint);
     protected abstract Optional<PendingOAuthState> validatePendingState(String email, String state);
     protected abstract void storeToken(String email, String accessToken, String refreshToken, Instant expiresAt, String state);
@@ -182,7 +176,7 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
             var dcrBody = MAPPER.writeValueAsString(Map.of(
                     "client_name", getProviderLabel() + " MCP Client",
                     "redirect_uris", List.of(getRedirectUri()),
-                    "grant_types", getGrantTypes(),
+                    "grant_types", List.of("authorization_code"),
                     "response_types", List.of("code"),
                     "token_endpoint_auth_method", "none"
             ));
@@ -217,8 +211,7 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
                     + "&redirect_uri=" + encode(getRedirectUri())
                     + "&state=" + encode(state)
                     + "&code_challenge=" + encode(codeChallenge)
-                    + "&code_challenge_method=S256"
-                    + (getScope().isBlank() ? "" : "&scope=" + encode(getScope()));
+                    + "&code_challenge_method=S256";
 
             return HttpResponse.create()
                     .withStatus(StatusCodes.FOUND)
