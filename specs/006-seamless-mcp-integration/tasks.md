@@ -85,8 +85,8 @@ description: "Task list for Seamless.AI MCP Integration"
 
 ### Tests for User Story 4
 
-- [ ] T013 [P] [US4] Extend `T/api/AkkaMcpGatewayIntegrationTest.java` (or add `T/api/SeamlessRiskIntegrationTest.java`): seed registry `seamless` tool metadata with a read tool (`readOnlyHint=true`), a write tool (`false`) and a tool with no hint; assert reader-only user may call the first and is refused the other two; assert a writer may call all; assert each call is recorded in the interaction history against the calling gateway user's identity (FR-003)
-- [ ] T014 [P] [US4] Add to `T/application/SeamlessMcpClientTest.java`: `listTools` conversion passes `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, and `title` annotations through unchanged (assert via the annotation-mapping code path)
+- [X] T013 [P] [US4] Create `T/api/SeamlessRiskIntegrationTest.java`: seed registry `seamless` tool metadata with a read tool (`readOnlyHint=true`) and a write tool (`readOnlyHint=false`); `seamless.mcp-url` pinned to an unroutable local port (`http://127.0.0.1:1`) so a permitted call fails fast on the upstream connection rather than depending on network access — the permission gate is strictly before that attempt. Found: reader-only may call the read tool but is refused the write tool; **writer-only is refused the read tool too** (reader/writer are independent roles, not tiered — matches README "Access and permissions"); a user with both roles may call both; a tool name with no registry entry at all defaults to write (FR-009's safe default) and a reader is refused it; a permitted call is recorded in the interaction history against the calling user's email (FR-003, FR-011)
+- [X] T014 [P] [US4] Add to `T/application/SeamlessMcpClientTest.java`: `listTools` conversion passes `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, and `title` annotations through unchanged, via a `ToolSpecification` built with `.metadata(Map)`
 
 ### Implementation for User Story 4
 
