@@ -323,7 +323,7 @@
             </div>
         </div>
         <div class="card-body" id="seamless-body">
-            <div id="seamless-status" class="status connected">Available — search, research, campaigns and more; no connection needed</div>
+            <div id="seamless-status" class="status loading">Loading status…</div>
         </div>
     </div>
 
@@ -478,6 +478,22 @@
         function renderGroundcoverStatus(data)  { renderStatus('gc',      data, '/groundcover/test',           '/groundcover/token',           '/groundcover/connect',           '/groundcover/disconnect',           'Connect to Groundcover'); }
         function renderHubspotStatus(data)      { renderStatus('hubspot', data, '/hubspot/oauth/test',         '/hubspot/oauth/token',         '/hubspot/oauth/connect',         '/hubspot/oauth/disconnect',         'Connect to HubSpot'); }
 
+        // Seamless.AI has no per-user connect step (single operator-configured API key), so there
+        // are no actions/test/token elements on its card — just reflect whether the operator has
+        // actually set SEAMLESS_API_KEY, instead of always claiming connected.
+        function renderSeamlessStatus(data) {
+            var box = document.getElementById('seamless-status');
+            if (data.connected) {
+                box.className = 'status connected';
+                box.textContent = 'Available — search, research, campaigns and more; no connection needed';
+                setDot('seamless', 'connected');
+            } else {
+                box.className = 'status disconnected';
+                box.textContent = 'Not configured — the gateway operator has not set SEAMLESS_API_KEY yet.';
+                setDot('seamless', 'disconnected');
+            }
+        }
+
         function renderError(statusId) {
             document.getElementById(statusId).className = 'status disconnected';
             document.getElementById(statusId).textContent = 'Unable to load status. Is the service running?';
@@ -567,7 +583,7 @@
             'google-calendar': function() { fetch('/google-calendar/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGCalStatus).catch(function() { renderError('gcal-status'); }); },
             'groundcover':     function() { fetch('/groundcover/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGroundcoverStatus).catch(function() { renderError('gc-status'); }); },
             'hubspot':         function() { fetch('/hubspot/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderHubspotStatus).catch(function() { renderError('hubspot-status'); }); },
-            'seamless':        function() { setDot('seamless', 'connected'); },
+            'seamless':        function() { fetch('/seamless/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSeamlessStatus).catch(function() { renderError('seamless-status'); }); },
             'slack':           function() { fetch('/slack/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSlackStatus).catch(function() { renderError('slack-status'); }); },
             'okta-admin':      function() { setDot('okta', 'connected'); }
         };

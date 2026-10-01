@@ -4,9 +4,9 @@ import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
-import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
@@ -20,13 +20,18 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Proves Seamless.AI's tools go through the same reader/writer permission gate and interaction
- * audit as every other system (FR-009, FR-011), with each call attributed to the calling gateway
+ * Proves Seamless.AI's tools go through the same reader/writer permission gate
+ * and interaction
+ * audit as every other system (FR-009, FR-011), with each call attributed to
+ * the calling gateway
  * user (FR-003) even though Seamless itself sees one shared identity.
  *
- * {@code seamless.mcp-url} is pointed at an unroutable local port so a permitted call fails fast
- * on the actual upstream connection (ECONNREFUSED) rather than depending on network access or a
- * real Seamless account — that failure happens strictly after the permission gate this test
+ * {@code seamless.mcp-url} is pointed at an unroutable local port so a
+ * permitted call fails fast
+ * on the actual upstream connection (ECONNREFUSED) rather than depending on
+ * network access or a
+ * real Seamless account — that failure happens strictly after the permission
+ * gate this test
  * checks, which is the boundary under test, not the upstream result.
  */
 public class SeamlessRiskIntegrationTest extends TestKitSupport {
@@ -46,12 +51,20 @@ public class SeamlessRiskIntegrationTest extends TestKitSupport {
                 """.formatted(READER_GROUP, WRITER_GROUP));
     }
 
-    private String createSession(String email, List<String> groups) {
+    /**
+     * Mints an MCP access token directly, the same credential kind the {@code /mcp}
+     * endpoint
+     * actually checks (see {@code AbstractProtectedEndpoint#requireMcpSession}) —
+     * not a browser
+     * {@code UserSessionEntity} token, which {@code /mcp} no longer accepts.
+     */
+    private String createMcpToken(String email, List<String> groups) {
         var token = UUID.randomUUID().toString();
         componentClient.forKeyValueEntity(token)
-                .method(UserSessionEntity::create)
-                .invoke(new UserSessionEntity.CreateCommand(
-                        email, "User", Instant.now().plusSeconds(3600), groups, "", List.of()));
+                .method(McpAccessTokenEntity::create)
+                .invoke(new McpAccessTokenEntity.CreateCommand(
+                        email, "User", groups, List.of(), "seamless-risk-test-client",
+                        Instant.now().plusSeconds(3600)));
         return token;
     }
 
@@ -80,7 +93,7 @@ public class SeamlessRiskIntegrationTest extends TestKitSupport {
     @Test
     public void readerOnlyUser_mayCallReadTool_butNotWriteTool() throws Exception {
         seedTools();
-        var token = createSession("seamless-risk-reader@lightbend.com", List.of(READER_GROUP));
+        var token = createMcpToken("seamless-risk-reader@lightbend.com", List.of(READER_GROUP));
 
         assertThat(callTool(token, READ_TOOL).path("error").isMissingNode())
                 .as("read tool should pass the permission gate for a reader")
@@ -93,9 +106,10 @@ public class SeamlessRiskIntegrationTest extends TestKitSupport {
     @Test
     public void writerOnlyUser_mayCallWriteTool_butNotReadTool() throws Exception {
         // Reader and writer are independent roles, not tiered (see README "Access and
-        // permissions"): holding only mcp-gateway-writer does not also grant read access.
+        // permissions"): holding only mcp-gateway-writer does not also grant read
+        // access.
         seedTools();
-        var token = createSession("seamless-risk-writer@lightbend.com", List.of(WRITER_GROUP));
+        var token = createMcpToken("seamless-risk-writer@lightbend.com", List.of(WRITER_GROUP));
 
         assertThat(callTool(token, WRITE_TOOL).path("error").isMissingNode())
                 .as("write tool should pass the permission gate for a writer")
@@ -108,7 +122,7 @@ public class SeamlessRiskIntegrationTest extends TestKitSupport {
     @Test
     public void userWithBothRoles_mayCallReadAndWriteTools() throws Exception {
         seedTools();
-        var token = createSession("seamless-risk-full-access@lightbend.com", List.of(READER_GROUP, WRITER_GROUP));
+        var token = createMcpToken("seamless-risk-full-access@lightbend.com", List.of(READER_GROUP, WRITER_GROUP));
 
         assertThat(callTool(token, READ_TOOL).path("error").isMissingNode()).isTrue();
         assertThat(callTool(token, WRITE_TOOL).path("error").isMissingNode()).isTrue();
@@ -116,9 +130,11 @@ public class SeamlessRiskIntegrationTest extends TestKitSupport {
 
     @Test
     public void toolWithNoCachedMetadata_defaultsToWrite_soReaderIsRefused() throws Exception {
-        // Nothing seeded in the registry for this tool name: McpRegistryEntity::findTool returns
-        // empty, and the gateway's safe default (`orElse(true)`) treats it as a write (FR-009).
-        var token = createSession("seamless-risk-unknown-tool@lightbend.com", List.of(READER_GROUP));
+        // Nothing seeded in the registry for this tool name:
+        // McpRegistryEntity::findTool returns
+        // empty, and the gateway's safe default (`orElse(true)`) treats it as a write
+        // (FR-009).
+        var token = createMcpToken("seamless-risk-unknown-tool@lightbend.com", List.of(READER_GROUP));
 
         var result = callTool(token, "Seamless_some_future_tool");
         assertThat(result.path("error").path("message").asText()).contains("Write access not permitted");
@@ -128,7 +144,7 @@ public class SeamlessRiskIntegrationTest extends TestKitSupport {
     public void permittedCall_isAttributedToTheCallingUserInTheInteractionHistory() throws Exception {
         seedTools();
         var userEmail = "seamless-risk-audit-" + UUID.randomUUID() + "@lightbend.com";
-        var token = createSession(userEmail, List.of(WRITER_GROUP));
+        var token = createMcpToken(userEmail, List.of(WRITER_GROUP));
 
         callTool(token, WRITE_TOOL);
 

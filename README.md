@@ -136,6 +136,14 @@ working; new deployments should not set these.
 - `GROUNDCOVER_REDIRECT_URI`
 - `GROUNDCOVER_OKTA_APP_ID`
 
+**Seamless.AI** — contact and company search, enrichment, and outreach. Unlike the other systems,
+it authenticates with a single operator-configured API key rather than a per-user connection, so
+there is nothing to connect from the dashboard — every user with access sees it as available
+immediately.
+- `SEAMLESS_API_KEY`
+- `SEAMLESS_MCP_URL` *(optional — defaults to Seamless's hosted server)*
+- `SEAMLESS_OKTA_APP_ID`
+
 The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_MCP_URL` and `OKTA_ADMIN_OKTA_APP_ID`.
 
 A few settings are optional across the board: `OKTA_JWKS_URI` overrides where Okta sign-in keys are fetched from, and `MCP_PROXY_OKTA_API_TOKEN` enables the Okta account-status page.
@@ -175,6 +183,7 @@ Every system is tied to an Okta application. Being assigned that application is 
 | HubSpot | HubSpot |
 | Reo | Reo |
 | Groundcover | Groundcover |
+| Seamless.AI | Seamless.AI |
 | Okta admin lookups | Okta MCP Admin |
 
 Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
@@ -198,6 +207,8 @@ This is deliberate. Assistants fetch the tool list once, when they connect, and 
 ### Connecting is still per-person
 
 Group membership and app assignment establish that you are *allowed* to use a system. They do not connect it. Each user still signs in to each system once through the dashboard, and the gateway acts strictly as that person — never with a shared or elevated account. So a colleague who can reach Salesforce sees only the Salesforce records their own Salesforce login permits.
+
+Seamless.AI is the one exception: it uses a single organization-wide API key rather than a per-person login, so there is no separate connect step and every call reaches Seamless as that same shared identity. The gateway still attributes and audits each call to the actual calling user locally, and group membership and app assignment still decide who may use it at all.
 
 ## Questions or problems
 

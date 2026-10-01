@@ -24,10 +24,11 @@ public class SeamlessMcpClientTest {
 
     private static final String MCP_URL = "https://mcp.seamless.ai/mcp";
     private static final String API_KEY = "seamless-api-key-under-test";
+    private static final String OKTA_APP_ID = "0oaSeamlessAppIdUnderTest";
     private static final String USER = "user@example.com";
 
     private static SeamlessMcpClient client() {
-        return new SeamlessMcpClient(MCP_URL, API_KEY);
+        return new SeamlessMcpClient(MCP_URL, API_KEY, OKTA_APP_ID);
     }
 
     // ---- identity / how-to ----
@@ -39,8 +40,14 @@ public class SeamlessMcpClientTest {
     }
 
     @Test
-    public void requiredOktaAppId_isBlank_soNoUserIsGatedOutByApplicationAssignment() {
-        assertThat(client().getRequiredOktaAppId()).isEmpty();
+    public void requiredOktaAppId_isWhateverWasConfigured() {
+        assertThat(client().getRequiredOktaAppId()).isEqualTo(OKTA_APP_ID);
+    }
+
+    @Test
+    public void requiredOktaAppId_blankWhenUnconfigured_soNoUserIsGatedOutByApplicationAssignment() {
+        var ungated = new SeamlessMcpClient(MCP_URL, API_KEY, "");
+        assertThat(ungated.getRequiredOktaAppId()).isEmpty();
     }
 
     @Test
@@ -56,13 +63,13 @@ public class SeamlessMcpClientTest {
 
     @Test
     public void isConnected_whenMcpUrlNotConfigured_isFalse() {
-        var unconfigured = new SeamlessMcpClient("", API_KEY);
+        var unconfigured = new SeamlessMcpClient("", API_KEY, OKTA_APP_ID);
         assertThat(unconfigured.isConnected(USER)).isFalse();
     }
 
     @Test
     public void isConnected_whenApiKeyNotConfigured_isFalse() {
-        var unconfigured = new SeamlessMcpClient(MCP_URL, "");
+        var unconfigured = new SeamlessMcpClient(MCP_URL, "", OKTA_APP_ID);
         assertThat(unconfigured.isConnected(USER)).isFalse();
     }
 
@@ -116,7 +123,7 @@ public class SeamlessMcpClientTest {
                                     default -> throw new UnsupportedOperationException(method.getName());
                                 });
                     },
-                    MCP_URL, API_KEY);
+                    MCP_URL, API_KEY, OKTA_APP_ID);
         }
     }
 
@@ -143,7 +150,10 @@ public class SeamlessMcpClientTest {
     @Test
     public void listTools_readResourceToolIsReadOnlyAndRequiresUri() throws Exception {
         var upstream = new FakeUpstream();
-        upstream.listTools = List::of;
+        upstream.listTools = () -> List.of(ToolSpecification.builder()
+                .name("search_contacts").description("Search contacts")
+                .parameters(JsonObjectSchema.builder().addStringProperty("query").build())
+                .build());
 
         var entries = upstream.client().listTools(USER);
 
@@ -159,6 +169,24 @@ public class SeamlessMcpClientTest {
         @SuppressWarnings("unchecked")
         var properties = (Map<String, Object>) schema.get("properties");
         assertThat(properties.keySet()).containsExactly("uri");
+    }
+
+    /**
+     * AkkaMcpGateway only falls back to its cached tool registry when a live {@code listTools}
+     * call returns an empty list (a transient upstream hiccup) — otherwise it overwrites the
+     * cache with whatever came back. The gateway-provided {@code read_resource} tool must
+     * therefore not be appended when Seamless itself returns nothing, or a 0-tool response would
+     * never look empty, and the cache would be overwritten with just read_resource — making every
+     * other previously-cached Seamless tool look unknown and default to write.
+     */
+    @Test
+    public void listTools_emptyUpstreamResult_returnsEmptyList_soTheGatewayCacheGuardStillWorks() throws Exception {
+        var upstream = new FakeUpstream();
+        upstream.listTools = List::of;
+
+        var entries = upstream.client().listTools(USER);
+
+        assertThat(entries).isEmpty();
     }
 
     // ---- read_resource ----
