@@ -314,6 +314,19 @@
         </div>
     </div>
 
+    <div class="card" data-mcp-id="seamless" style="display:none">
+        <div class="card-header" onclick="toggleCard('seamless')">
+            <h2>Seamless.AI</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="seamless-dot"></span>
+                <span class="chevron" id="seamless-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="seamless-body">
+            <div id="seamless-status" class="status connected">Available — search, research, campaigns and more; no connection needed</div>
+        </div>
+    </div>
+
     <div class="card" data-mcp-id="slack" style="display:none">
         <div class="card-header" onclick="toggleCard('slack')">
             <h2>Slack</h2>
@@ -554,6 +567,7 @@
             'google-calendar': function() { fetch('/google-calendar/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGCalStatus).catch(function() { renderError('gcal-status'); }); },
             'groundcover':     function() { fetch('/groundcover/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGroundcoverStatus).catch(function() { renderError('gc-status'); }); },
             'hubspot':         function() { fetch('/hubspot/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderHubspotStatus).catch(function() { renderError('hubspot-status'); }); },
+            'seamless':        function() { setDot('seamless', 'connected'); },
             'slack':           function() { fetch('/slack/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSlackStatus).catch(function() { renderError('slack-status'); }); },
             'okta-admin':      function() { setDot('okta', 'connected'); }
         };

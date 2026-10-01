@@ -7,11 +7,11 @@ Sources: https://docs.seamless.ai/mcp-docs and its linked MCP pages (authenticat
 - **Rationale**: Documented server URL; same transport as the existing `StreamableHttpMcpTransport` clients.
 - **Alternatives**: SSE transport — not documented for this server.
 
-## R2. Authentication
-- **Decision**: OAuth 2.1 with DCR/CIMD and PKCE S256, scope `mcp.all`, via `AbstractDcrOAuthEndpoint` (as Reo). Seamless also documents an API key option; not used.
-- **Rationale**: Per-user identity is a core requirement (FR-003); DCR needs no operator-held client secret. Seamless's own docs mark OAuth as recommended.
-- **Alternatives**: Org-wide API key — rejected (breaks per-user access, requires secret storage). Static client id via Seamless Settings — possible fallback, not needed.
-- **Open check for implementation**: confirm `AbstractDcrOAuthEndpoint` discovers metadata at `/.well-known/oauth-authorization-server` and handles Seamless's `/mcp/register`, `/mcp/authorize`, `/mcp/token` and requests scope `mcp.all`. The existing `AbstractDcrOAuthEndpointProbeTest` shows how to probe this. Redirect URI must be registered per DCR at connect time (env `SEAMLESS_REDIRECT_URI`).
+## R2. Authentication — REVISED 2026-09-30
+- **Decision (current)**: A single, operator-configured API key (`SEAMLESS_API_KEY`), sent as the `Token` header on every request — Seamless's documented non-OAuth auth method (Settings > Public API Connections > API Key, scope MCP). No per-user entity, no OAuth endpoint. Mirrors `OktaMcpClient`.
+- **Rationale**: Explicit user decision, made after the OAuth-DCR design (below) was implemented and passing: simplicity over per-user attribution at the Seamless layer. The gateway's own interaction log still attributes each call to the requesting gateway user (FR-003), so auditability is preserved locally even though Seamless sees one shared identity.
+- **Alternatives**: Per-user OAuth 2.1 DCR (the original decision, see superseded note below) — rejected by the user in favor of the simpler shared-key model.
+- **Superseded original decision** (kept for history; the DCR probe findings remain accurate if this is ever revisited): OAuth 2.1 with DCR/CIMD and PKCE S256, scope `mcp.all`, via `AbstractDcrOAuthEndpoint` (as Reo), was implemented and verified live on 2026-09-25 — `mcp.seamless.ai` challenges both `initialize` and `tools/call` with a 401 carrying `resource_metadata` + `scope="mcp.all"`, and its authorization server metadata (`/.well-known/oauth-authorization-server`) advertises `registration_endpoint`, PKCE `S256`, and both `authorization_code` and `refresh_token` grants. That code (`SeamlessConnectionEntity`, `SeamlessOAuthEndpoint`, the `getScope()`/`getGrantTypes()` hooks added to `AbstractDcrOAuthEndpoint`) has been removed in favor of the API-key design above; the hooks were reverted since nothing else needs them.
 
 ## R3. Tool coverage
 - **Decision**: Dynamic discovery via `listTools()`, prefix `Seamless_`, no hard-coded list.
@@ -37,9 +37,10 @@ Sources: https://docs.seamless.ai/mcp-docs and its linked MCP pages (authenticat
 ## R7. Timeouts
 - **Decision**: Reuse Reo/HubSpot values (init 15 s, tool 30 s). Bulk send may take longer; keep default and revisit if tests against a real account show timeouts.
 
-## R8. Access gating and config
-- **Decision**: New config block `seamless { mcp-url, redirect-uri, okta-app-id }` with env `SEAMLESS_MCP_URL`, `SEAMLESS_REDIRECT_URI`, `SEAMLESS_OKTA_APP_ID`. Unset app id disables gating (existing behaviour). Empty `mcp-url` → not connected.
-- **Rationale**: Identical to Reo; README already documents this pattern per system.
+## R8. Access gating and config — REVISED 2026-09-30, then REVISED again 2026-09-30
+- **Decision**: Config block `seamless { mcp-url, api-key }` with env `SEAMLESS_MCP_URL`, `SEAMLESS_API_KEY`. No Okta app id at all: `getRequiredOktaAppId()` hard-returns `""`, so `appAssigned()` never gates Seamless.AI for anyone. Empty `mcp-url` or `api-key` → `isConnected()` false for everyone, independent of `userId` — the only "not available" state left is an operator-configuration one, not a per-user one.
+- **Rationale**: First revision matched every other system's config pattern with `okta-app-id` as the one remaining per-user gate. A second, separate explicit user decision removed that gate too — Seamless.AI is meant to be usable by any signed-in gateway user, not just those an admin has additionally assigned an Okta application. Reader/writer permission (FR-009) is unaffected and still enforced normally.
+- **Alternatives**: Keeping `okta-app-id` as a soft/optional gate (unset = open, set = gated) — rejected; the user asked to remove it outright, not make it optional.
 
 ## R9. Workflows
 - **Decision**: Encode the four workflows (prospect-to-meeting, bulk enrich and campaign, daily activity digest, job-change trigger) in `howTo()` markdown as ordered tool sequences with the resource-read steps. Digest's Slack step relies on the user's existing Slack connection; without it the assistant returns the summary inline (spec FR-007).
@@ -49,6 +50,7 @@ Sources: https://docs.seamless.ai/mcp-docs and its linked MCP pages (authenticat
 - **Decision**: No coupling; the assistant discovers Slack tools itself.
 
 ## Risks
-- DCR compatibility with Seamless is unverified until run against a real account (mitigation: quickstart smoke test, probe test).
+- The API key itself, and the account it belongs to, is unverified against a real Seamless account until the quickstart smoke test runs.
 - FR-010 (deletions distinguishable in history) may need a small extension to interaction recording; decide during tasks.
-- Engagement-licence tool filtering is done by Seamless per account at `tools/list`; the gateway caches tool metadata per system, so users with different licences could see a cached union in the registry. Confirm registry behaviour with existing per-user listing during implementation.
+- Engagement-licence tool filtering is done by Seamless for whichever account the shared API key belongs to; since there is only one Seamless identity now (not one per gateway user), all gateway users effectively share that account's licence — there is no cross-user licence variance to worry about for this design, but the single API key's Group/scopes must cover everything the organisation wants exposed.
+- The API key must never be logged or returned to a client; `buildClient` puts it only in the `Token` transport header.
