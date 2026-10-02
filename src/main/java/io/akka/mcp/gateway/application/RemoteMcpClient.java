@@ -13,6 +13,16 @@ public interface RemoteMcpClient {
     /** Okta appInstanceId required to access this MCP. Must be implemented by each client. */
     String getRequiredOktaAppId();
 
+    /**
+     * Whether this downstream MCP is allowed to execute write tools at all.
+     *
+     * This is a property of the connector itself, independent of the caller: a user in the
+     * writer group still cannot run a write tool on a read-only MCP. Defaults to read-only so
+     * a newly added connector is never write-capable by accident — opt in explicitly once the
+     * granted OAuth scopes and the downstream server have been reviewed.
+     */
+    default boolean allowsWrites() { return false; }
+
     boolean isConnected(String userId);
     boolean canHandle(String toolName);
 

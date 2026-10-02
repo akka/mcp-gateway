@@ -61,6 +61,13 @@
         .card-locked .card-header { cursor: default; }
         .locked-badge { font-size: 0.75rem; font-weight: 500; color: #888; background: #f0f0f0; border: 1px solid #ddd; border-radius: 20px; padding: 2px 8px; }
         .deprecated-badge { font-size: 0.7rem; font-weight: 600; color: #8a4a00; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 20px; padding: 2px 8px; text-transform: uppercase; letter-spacing: 0.03em; }
+        .access-badge { font-size: 0.7rem; font-weight: 600; border-radius: 20px; padding: 2px 8px; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+        .access-badge.read { color: #0a558c; background: #e8f1fb; border: 1px solid #c5ddf5; }
+        .access-badge.write { color: #b45309; background: #fff3e0; border: 1px solid #fcd9a0; }
+        .product-list { list-style: none; margin: 0 0 14px; padding: 0; border: 1px solid #ededed; border-radius: 8px; }
+        .product-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 12px; font-size: 0.85rem; color: #333; }
+        .product-list li + li { border-top: 1px solid #f2f2f2; }
+        .product-badges { display: flex; align-items: center; gap: 6px; }
         .deprecation-notice { background: #fff8e1; border: 1px solid #ffe082; color: #6b4200; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.82rem; }
         .session-strip { margin-top: 32px; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px 20px; }
         .session-strip h3 { font-size: 0.85rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px; }
@@ -184,6 +191,7 @@
             <p style="font-size: 0.85rem; color: #555; margin-top: 0;">
                 A single sign-in for Drive, Docs, Gmail, and Calendar — files created in one product are reachable from the others.
             </p>
+            <ul class="product-list" id="gws-products" style="display:none"></ul>
             <div id="gws-status" class="status loading">Loading status…</div>
             <div id="gws-actions" class="actions"></div>
             <div id="gws-test-result" class="test-result"></div>
@@ -576,6 +584,72 @@
                             return mcpId.indexOf('google-workspace-') === 0 ? 'google-workspace' : mcpId;
                         }
 
+                        // Whether each MCP may run write tools, keyed both by card and by raw mcpId
+                        // (the Workspace card needs the raw ids to annotate its four products).
+                        var writeAllowedByCard = {};
+                        var writeAllowedByMcp = {};
+                        access.accessible.concat(access.inaccessible).forEach(function(mcp) {
+                            writeAllowedByCard[normalizeMcpId(mcp.mcpId)] = mcp.writeAllowed;
+                            writeAllowedByMcp[mcp.mcpId] = mcp.writeAllowed;
+                        });
+
+                        var WORKSPACE_CARD_ID = 'google-workspace';
+
+                        // One badge when the connector is read-only, two when it also allows writes.
+                        // This is the connector's own capability, not the viewer's role — a write
+                        // still needs the writer group on top.
+                        function accessLabels(writeAllowed) {
+                            return writeAllowed ? ['Read', 'Write'] : ['Read-only'];
+                        }
+
+                        function accessBadge(label) {
+                            var badge = document.createElement('span');
+                            badge.className = 'access-badge ' + (label === 'Write' ? 'write' : 'read');
+                            badge.textContent = label;
+                            return badge;
+                        }
+
+                        function addAccessBadges(card, mcpId) {
+                            // The Workspace card fronts four MCPs with differing capabilities; its
+                            // product list carries the classification, so no card-level badge.
+                            if (mcpId === WORKSPACE_CARD_ID) return;
+                            var right = card.querySelector('.card-header-right');
+                            if (!right || right.querySelector('.access-badge')) return;
+                            var anchor = right.firstChild;
+                            accessLabels(writeAllowedByCard[mcpId]).forEach(function(label) {
+                                right.insertBefore(accessBadge(label), anchor);
+                            });
+                        }
+
+                        var WORKSPACE_PRODUCTS = [
+                            { mcpId: 'google-workspace-drive', label: 'Drive' },
+                            { mcpId: 'google-workspace-docs', label: 'Docs' },
+                            { mcpId: 'google-workspace-gmail', label: 'Gmail' },
+                            { mcpId: 'google-workspace-calendar', label: 'Calendar' }
+                        ];
+
+                        function renderWorkspaceProducts() {
+                            var list = document.getElementById('gws-products');
+                            if (!list) return;
+                            list.innerHTML = '';
+                            WORKSPACE_PRODUCTS.forEach(function(product) {
+                                if (!(product.mcpId in writeAllowedByMcp)) return;
+                                var row = document.createElement('li');
+                                var name = document.createElement('span');
+                                name.textContent = product.label;
+                                var badges = document.createElement('span');
+                                badges.className = 'product-badges';
+                                accessLabels(writeAllowedByMcp[product.mcpId]).forEach(function(label) {
+                                    badges.appendChild(accessBadge(label));
+                                });
+                                row.appendChild(name);
+                                row.appendChild(badges);
+                                list.appendChild(row);
+                            });
+                            list.style.display = list.children.length > 0 ? '' : 'none';
+                        }
+                        renderWorkspaceProducts();
+
                         var seenAccessible = {};
                         access.accessible.forEach(function(mcp) {
                             var mcpId = normalizeMcpId(mcp.mcpId);
@@ -584,6 +658,7 @@
                             var card = document.querySelector('[data-mcp-id="' + mcpId + '"]');
                             if (!card) return;
                             sectionA.appendChild(card);
+                            addAccessBadges(card, mcpId);
                             card.style.display = '';
                             if (STATUS_FETCHERS[mcpId]) STATUS_FETCHERS[mcpId]();
                         });
@@ -598,6 +673,7 @@
                                 var card = document.querySelector('[data-mcp-id="' + mcpId + '"]');
                                 if (!card) return;
                                 card.classList.add('card-locked');
+                                addAccessBadges(card, mcpId);
                                 var badge = document.createElement('span');
                                 badge.className = 'locked-badge';
                                 badge.textContent = 'No access';
