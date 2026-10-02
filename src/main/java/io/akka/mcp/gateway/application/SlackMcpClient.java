@@ -54,6 +54,12 @@ public class SlackMcpClient implements RemoteMcpClient {
     @Override
     public String getRequiredOktaAppId() { return oktaAppId; }
 
+    /**
+     * Write-capable: posting messages and replies is supported.
+     */
+    @Override
+    public boolean allowsWrites() { return true; }
+
     @Override
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(

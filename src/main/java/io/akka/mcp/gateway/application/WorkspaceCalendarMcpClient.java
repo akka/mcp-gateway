@@ -46,6 +46,13 @@ public class WorkspaceCalendarMcpClient implements RemoteMcpClient {
     @Override
     public String getRequiredOktaAppId() { return oktaAppId; }
 
+    /**
+     * Write-capable: the Workspace OAuth grant includes `calendar.events`, so creating and
+     * updating events is supported.
+     */
+    @Override
+    public boolean allowsWrites() { return true; }
+
     @Override
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(

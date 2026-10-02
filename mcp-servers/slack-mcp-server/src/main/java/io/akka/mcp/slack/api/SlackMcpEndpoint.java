@@ -131,6 +131,20 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                         param("page", "integer", "Page number (default 1)")),
                 List.of("query")));
 
+        // Only write tool today. Uses the explicit write-tool helper so its annotations carry
+        // readOnlyHint:false — the gateway's write classifier (McpConfig.ToolMeta.isWrite) keys
+        // off that hint to route the call through its connector/role write gate.
+        tools.add(writeTool("slack_post_message",
+                "Post a message to a Slack channel, DM, or thread. Requires the chat:write scope; "
+                        + "if the user connected before this scope was requested they need to reconnect.",
+                props(
+                        param("channel", "string",
+                                "Channel/DM/group id (e.g. C12345, D12345, G12345). Use slack_list_channels or slack_search_messages to find it; @name and #name are not accepted."),
+                        param("text", "string", "Message body (Slack mrkdwn supported)."),
+                        param("thread_ts", "string",
+                                "Optional parent message timestamp (e.g. 1234567890.123456). Omit to post as a new top-level message.")),
+                List.of("channel", "text")));
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tools", tools);
         return responseJson(id, result);
@@ -184,6 +198,12 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                     int page = intArg(args, "page", 1);
                     yield MAPPER.writeValueAsString(slack.searchMessages(query, page, count));
                 }
+                case "slack_post_message" -> {
+                    String channel = required(args, "channel");
+                    String messageText = required(args, "text");
+                    String threadTs = str(args, "thread_ts");
+                    yield MAPPER.writeValueAsString(slack.postMessage(channel, messageText, threadTs));
+                }
                 default -> throw new IllegalArgumentException("Unknown tool: " + toolName);
             };
 
@@ -205,12 +225,23 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
 
     private static Map<String, Object> tool(String name, String description,
             Map<String, Object> properties, List<String> required) {
+        return toolInternal(name, description, properties, required, Map.of("readOnlyHint", true));
+    }
+
+    /** A tool that mutates state in Slack. The {@code readOnlyHint:false} is what the gateway's
+     * write classifier reads to send the call through the write-permission gate. */
+    private static Map<String, Object> writeTool(String name, String description,
+            Map<String, Object> properties, List<String> required) {
+        return toolInternal(name, description, properties, required,
+                Map.of("readOnlyHint", false, "destructiveHint", false, "idempotentHint", false));
+    }
+
+    private static Map<String, Object> toolInternal(String name, String description,
+            Map<String, Object> properties, List<String> required, Map<String, Object> annotations) {
         Map<String, Object> inputSchema = new LinkedHashMap<>();
         inputSchema.put("type", "object");
         inputSchema.put("properties", properties);
         if (!required.isEmpty()) inputSchema.put("required", required);
-
-        Map<String, Object> annotations = Map.of("readOnlyHint", true);
 
         Map<String, Object> t = new LinkedHashMap<>();
         t.put("name", name);

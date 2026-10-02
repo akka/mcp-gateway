@@ -109,7 +109,8 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
      *
      * Handled methods: initialize, notifications/initialized, tools/list, tools/call, ping
      */
-    public record McpAccessEntry(String mcpId, String mcpName) {}
+    /** @param writeAllowed whether this MCP may run write tools at all (see RemoteMcpClient#allowsWrites) */
+    public record McpAccessEntry(String mcpId, String mcpName, boolean writeAllowed) {}
     public record McpAccessResponse(List<McpAccessEntry> accessible, List<McpAccessEntry> inaccessible) {}
 
     @Get("/access")
@@ -121,7 +122,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         for (var client : clients) {
             if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
             var hasAccess = appAssigned(session, client);
-            var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName());
+            var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName(), client.allowsWrites());
             if (hasAccess) accessible.add(entry); else inaccessible.add(entry);
         }
         return HttpResponses.ok(new McpAccessResponse(accessible, inaccessible));
@@ -364,6 +365,26 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                 .orElse(true); // unknown → assume write (safe default)
         log.info("MCP tools/call: name={} opType={}", toolName, isWrite ? "write" : "read");
 
+
+        // A read-only MCP refuses every write tool regardless of the caller's groups. Checked
+        // before the group guard so the error names the real reason ("connected read-only")
+        // instead of blaming the user's permissions.
+        if (isWrite && !client.allowsWrites()) {
+            log.warn("MCP tools/call: write rejected for user {}: {} is read-only, tool={}",
+                    userEmail, client.getMcpName(), toolName);
+            componentClient
+                    .forEventSourcedEntity(UUID.randomUUID().toString())
+                    .method(McpInteractionEntity::record)
+                    .invoke(new McpInteractionEntity.RecordCommand(
+                            userEmail, client.getMcpId(), toolName,
+                            Map.of("reason", "mcp-read-only"), "write-rejected"));
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("content", List.of(Map.of("type", "text", "text",
+                    client.getMcpName() + " is connected read-only through the gateway; "
+                            + "write tools such as `" + toolName + "` are not permitted.")));
+            resp.put("isError", true);
+            return responseJson(id, resp);
+        }
 
         boolean isRead = !isWrite;
         String label = isRead ? "Read": "Write";

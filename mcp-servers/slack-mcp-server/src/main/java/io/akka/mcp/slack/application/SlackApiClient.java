@@ -64,6 +64,22 @@ public class SlackApiClient {
         return call(url);
     }
 
+    /**
+     * Post a message to a channel, DM, or thread. {@code channel} must be a Slack id
+     * ({@code C…}/{@code D…}/{@code G…}); {@code @name}/{@code #name} aren't accepted by the API.
+     * Pass {@code threadTs} to reply in a thread; omit for a new top-level message.
+     *
+     * Requires the user token to carry the {@code chat:write} scope. Slack returns
+     * {@code missing_scope} otherwise — surface that as-is so the caller knows to reconnect.
+     */
+    public JsonNode postMessage(String channel, String text, String threadTs) throws Exception {
+        var body = MAPPER.createObjectNode();
+        body.put("channel", channel);
+        body.put("text", text);
+        if (threadTs != null && !threadTs.isBlank()) body.put("thread_ts", threadTs);
+        return callPost(BASE + "chat.postMessage", MAPPER.writeValueAsString(body));
+    }
+
     private JsonNode call(String url) throws Exception {
         var resp = HTTP.send(
                 HttpRequest.newBuilder()
@@ -71,6 +87,28 @@ public class SlackApiClient {
                         .header("Authorization", "Bearer " + token)
                         .header("Content-Type", "application/json; charset=utf-8")
                         .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        var json = MAPPER.readTree(resp.body());
+        if (!json.path("ok").asBoolean()) {
+            String error = json.path("error").asText("unknown_error");
+            throw new SlackApiException(error);
+        }
+        return json;
+    }
+
+    /**
+     * POST a JSON body to a Slack Web API method. Same success semantics as {@link #call(String)}:
+     * Slack returns 200 with {@code ok:false} on logical errors, so we must inspect the body
+     * rather than relying on the HTTP status.
+     */
+    private JsonNode callPost(String url, String jsonBody) throws Exception {
+        var resp = HTTP.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json; charset=utf-8")
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         var json = MAPPER.readTree(resp.body());

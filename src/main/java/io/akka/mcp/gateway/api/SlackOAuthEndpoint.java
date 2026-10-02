@@ -54,13 +54,27 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     @Override protected String getProviderLabel() { return "Slack"; }
 
     // Slack OAuth v2 uses user_scope (not scope) for user tokens — pass empty bot scope
-    // and inject user_scope via extra params so users only access their own data
+    // and inject user_scope via extra params so users only access their own data.
+    //
+    // Scope changes are not applied retroactively: an already-connected user keeps whatever
+    // scopes they granted at connect time. If a new scope is added here (e.g. chat:write),
+    // existing users must disconnect and reconnect before tools needing it will work.
     @Override
     protected String getScope() { return ""; }
 
     @Override
     protected String getExtraAuthParams() {
-        return "&user_scope=" + encode("channels:read channels:history groups:read groups:history im:read im:history mpim:read mpim:history files:read users:read users:read.email search:read");
+        return "&user_scope=" + encode(String.join(" ",
+                // read side
+                "channels:read", "channels:history",
+                "groups:read", "groups:history",
+                "im:read", "im:history",
+                "mpim:read", "mpim:history",
+                "files:read",
+                "users:read", "users:read.email",
+                "search:read",
+                // write side — needed by slack_post_message
+                "chat:write"));
     }
 
     @Override
