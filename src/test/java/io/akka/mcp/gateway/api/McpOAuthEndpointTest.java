@@ -46,6 +46,17 @@ public class McpOAuthEndpointTest {
     }
 
     @Test
+    public void defaultConfig_allowsClaudeHostsOnly() {
+        // The checked-in default (no MCP_OAUTH_REDIRECT_HOST_ALLOWLIST override) must let
+        // claude.ai / claude.com register, but still reject any other https host.
+        var defaults = new McpOAuthEndpoint(null, ConfigFactory.load());
+        assertThat(defaults.isAllowedRedirectUri("https://claude.ai/api/mcp/auth_callback")).isTrue();
+        assertThat(defaults.isAllowedRedirectUri("https://claude.com/api/mcp/auth_callback")).isTrue();
+        assertThat(defaults.isAllowedRedirectUri("https://evil.example/callback")).isFalse();
+        assertThat(defaults.isAllowedRedirectUri("https://claude.ai.evil.example/callback")).isFalse();
+    }
+
+    @Test
     public void plainHttp_toNonLoopbackHost_isDenied() {
         assertThat(NO_ALLOWLIST.isAllowedRedirectUri("http://evil.example/callback")).isFalse();
         assertThat(NO_ALLOWLIST.isAllowedRedirectUri("http://attacker.com/callback")).isFalse();
