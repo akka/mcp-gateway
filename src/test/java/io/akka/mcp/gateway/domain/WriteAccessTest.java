@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,26 +17,26 @@ public class WriteAccessTest {
     }
 
     @Test
-    public void unconfigured_leavesEveryConnectorReadOnly() {
-        assertThat(WriteAccess.parse("", WRITER_GROUP).connectorAllows("slack")).isFalse();
-        assertThat(WriteAccess.parse(null, WRITER_GROUP).connectorAllows("slack")).isFalse();
-        assertThat(WriteAccess.parse("  , ,", WRITER_GROUP).connectorAllows("slack")).isFalse();
+    public void withNothingEnabled_everyConnectorIsReadOnly() {
+        var access = new WriteAccess(Set.of(), WRITER_GROUP);
+
+        assertThat(access.connectorAllows("slack")).isFalse();
+        assertThat(access.permits("slack", sessionIn(WRITER_GROUP))).isFalse();
     }
 
     @Test
-    public void listedConnectors_areEnabled_andTheRestAreNot() {
-        var access = WriteAccess.parse("slack, google-workspace-gmail ,google-workspace-docs", WRITER_GROUP);
+    public void onlyEnabledConnectorsAllowWrites() {
+        var access = new WriteAccess(Set.of("slack", "google-workspace-gmail"), WRITER_GROUP);
 
         assertThat(access.connectorAllows("slack")).isTrue();
         assertThat(access.connectorAllows("google-workspace-gmail")).isTrue();
-        assertThat(access.connectorAllows("google-workspace-docs")).isTrue();
         assertThat(access.connectorAllows("google-workspace-drive")).isFalse();
         assertThat(access.connectorAllows("salesforce")).isFalse();
     }
 
     @Test
     public void matchIsExact_soAPrefixDoesNotEnableALongerId() {
-        var access = WriteAccess.parse("google-workspace-gmail", WRITER_GROUP);
+        var access = new WriteAccess(Set.of("google-workspace-gmail"), WRITER_GROUP);
 
         assertThat(access.connectorAllows("gmail")).isFalse();
         assertThat(access.connectorAllows("google-workspace")).isFalse();
@@ -45,7 +44,7 @@ public class WriteAccessTest {
 
     @Test
     public void permits_needsBothTheEnabledConnectorAndTheWriterGroup() {
-        var access = WriteAccess.parse("slack", WRITER_GROUP);
+        var access = new WriteAccess(Set.of("slack"), WRITER_GROUP);
 
         assertThat(access.permits("slack", sessionIn(WRITER_GROUP))).isTrue();
         assertThat(access.permits("slack", sessionIn("mcp-gateway-reader"))).isFalse();
@@ -54,41 +53,24 @@ public class WriteAccessTest {
 
     @Test
     public void blankWriterGroup_grantsNobody() {
-        var access = WriteAccess.parse("slack", "");
+        var access = new WriteAccess(Set.of("slack"), "");
 
         assertThat(access.permits("slack", sessionIn(WRITER_GROUP, ""))).isFalse();
     }
 
-    private static final WriteAccess CONFIGURED = WriteAccess.parse("slack", WRITER_GROUP);
-
     @Test
-    public void resolve_prefersTheSavedSelectionOverConfig() {
-        var access = WriteAccess.resolve(() -> Optional.of(Set.of("google-workspace-gmail")), CONFIGURED, e -> {});
-
-        assertThat(access.connectorAllows("google-workspace-gmail")).isTrue();
-        assertThat(access.connectorAllows("slack")).isFalse();
-    }
-
-    @Test
-    public void resolve_aSavedEmptySelectionDisablesEverythingEvenIfConfigEnablesSome() {
-        var access = WriteAccess.resolve(() -> Optional.of(Set.of()), CONFIGURED, e -> {});
-
-        assertThat(access.connectorAllows("slack")).isFalse();
-    }
-
-    @Test
-    public void resolve_fallsBackToConfigWhenNothingWasEverSaved() {
-        var access = WriteAccess.resolve(Optional::empty, CONFIGURED, e -> {});
+    public void resolve_usesTheSavedSelection() {
+        var access = WriteAccess.resolve(() -> Set.of("slack"), WRITER_GROUP, e -> {});
 
         assertThat(access.connectorAllows("slack")).isTrue();
-        assertThat(access.connectorAllows("google-workspace-gmail")).isFalse();
+        assertThat(access.writerGroup()).isEqualTo(WRITER_GROUP);
     }
 
     @Test
-    public void resolve_failsClosedRatherThanFallingBackToConfigWhenTheStoreCannotBeRead() {
+    public void resolve_failsClosedAndReportsWhenTheSavedSelectionCannotBeRead() {
         var failures = new ArrayList<RuntimeException>();
 
-        var access = WriteAccess.resolve(() -> { throw new IllegalStateException("store down"); }, CONFIGURED, failures::add);
+        var access = WriteAccess.resolve(() -> { throw new IllegalStateException("store down"); }, WRITER_GROUP, failures::add);
 
         assertThat(access.connectorAllows("slack")).isFalse();
         assertThat(access.writerGroup()).isEqualTo(WRITER_GROUP);

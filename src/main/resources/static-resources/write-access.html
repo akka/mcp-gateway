@@ -64,6 +64,7 @@
 
     <script>
         var original = [];
+        var version = 0;
         var rows = [];
 
         function load() {
@@ -82,12 +83,13 @@
 
         function render(d) {
             rows = d.connectors;
+            version = d.version;
             original = rows.filter(function(c) { return c.enabled; }).map(function(c) { return c.mcpId; }).sort();
             document.getElementById('writer-warning').style.display = d.writerGroupConfigured ? 'none' : '';
 
-            var source = d.source === 'admin'
-                ? 'Set by ' + esc(d.updatedBy || 'an admin') + (d.updatedAt ? ' on ' + esc(new Date(d.updatedAt).toLocaleString()) : '') + '.'
-                : 'Not changed here yet, so the deployment default is in use.';
+            var source = d.updatedBy
+                ? 'Last changed by ' + esc(d.updatedBy) + (d.updatedAt ? ' on ' + esc(new Date(d.updatedAt).toLocaleString()) : '') + '.'
+                : 'Nothing has been enabled yet, so every system is read-only.';
 
             var html = '<div class="source">' + source + '</div><div class="card" id="rows">';
             rows.forEach(function(c, i) {
@@ -138,7 +140,7 @@
             fetch('/admin/write-access', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabledMcpIds: now, basedOn: original })
+                body: JSON.stringify({ enabledMcpIds: now, basedOnVersion: version })
             }).then(function(r) {
                 if (r.status === 401) { window.location.href = '/login'; return null; }
                 if (!r.ok) { return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); }); }

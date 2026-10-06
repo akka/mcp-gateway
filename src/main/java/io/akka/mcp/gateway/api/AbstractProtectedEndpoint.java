@@ -17,7 +17,6 @@ import io.akka.mcp.gateway.domain.WriteAccess;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -53,7 +52,6 @@ public abstract class AbstractProtectedEndpoint extends AbstractHttpEndpoint {
     protected final String writerGroup;
     protected final String adminGroup;
     protected final String escalaterGroup;
-    protected final WriteAccess configuredWriteAccess;
 
     protected AbstractProtectedEndpoint(ComponentClient componentClient, Config config) {
         this.componentClient = componentClient;
@@ -62,25 +60,23 @@ public abstract class AbstractProtectedEndpoint extends AbstractHttpEndpoint {
         this.writerGroup = config.getString("okta.groups.writer");
         this.adminGroup = config.getString("okta.groups.admin");
         this.escalaterGroup = config.getString("okta.groups.escalater");
-        this.configuredWriteAccess = WriteAccess.parse(config.getString("mcp.write-enabled"), writerGroup);
     }
 
     /**
-     * Which MCPs may run write tools right now: the selection an admin saved, else the deployment
-     * config. Read on every call so a change takes effect immediately; fails closed if the saved
-     * selection cannot be read.
+     * Which MCPs may run write tools right now: the selection an admin saved, read on every call so a
+     * change takes effect immediately. Fails closed if the saved selection cannot be read.
      */
     protected WriteAccess currentWriteAccess() {
-        return WriteAccess.resolve(this::savedWriteEnabledIds, configuredWriteAccess,
+        return WriteAccess.resolve(this::savedWriteEnabledIds, writerGroup,
                 e -> WRITE_ACCESS_LOG.error("Could not read the saved write policy; refusing all writes: {}", e.getMessage(), e));
     }
 
-    private Optional<Set<String>> savedWriteEnabledIds() {
-        var saved = componentClient
+    private Set<String> savedWriteEnabledIds() {
+        return Set.copyOf(componentClient
                 .forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
                 .method(McpWritePolicyEntity::get)
-                .invoke();
-        return saved.configured() ? Optional.of(Set.copyOf(saved.enabledMcpIds())) : Optional.empty();
+                .invoke()
+                .enabledMcpIds());
     }
 
     /** Resolves the browser's {@code SESSION} cookie only. Never accepts a Bearer token. */

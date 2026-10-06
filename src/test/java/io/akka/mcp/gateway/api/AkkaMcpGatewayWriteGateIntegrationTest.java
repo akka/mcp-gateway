@@ -5,9 +5,11 @@ import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
+import io.akka.mcp.gateway.application.McpWritePolicyEntity;
 import io.akka.mcp.gateway.application.SlackConnectionEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -19,11 +21,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * A downstream MCP is read-only unless the operator lists it in {@code mcp.write-enabled}. That
- * gate is a property of the connector, not of the caller: holding the writer group does not buy a
- * write on a read-only MCP, and the writer group is still required on a write-enabled one.
+ * A downstream MCP is read-only unless an admin has enabled writes on it. That gate is a property
+ * of the connector, not of the caller: holding the writer group does not buy a write on a
+ * read-only MCP, and the writer group is still required on a write-enabled one.
  *
- * Okta admin stands in for a read-only MCP (not listed, and {@code isConnected} needs only a
+ * Okta admin stands in for a read-only MCP (not enabled, and {@code isConnected} needs only a
  * non-blank url, so no OAuth seeding), Slack for a write-enabled one.
  */
 public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
@@ -40,14 +42,24 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
     protected TestKit.Settings testKitSettings() {
         // Both urls must be non-blank or the clients report themselves disconnected and the
         // "not connected" branch answers before the write gate is ever reached. The group names
-        // and write-enabled list have no checked-in defaults, so pin them.
+        // have no checked-in defaults, so pin them.
         return TestKit.Settings.DEFAULT.withAdditionalConfig("""
                 okta-admin.mcp-url = "%s"
                 slack.mcp-url = "%s"
                 okta.groups.reader = "%s"
                 okta.groups.writer = "%s"
-                mcp.write-enabled = "slack"
                 """.formatted(DEAD_URL, DEAD_URL, READER_GROUP, WRITER_GROUP));
+    }
+
+    /** Slack is the write-enabled MCP; the shared policy entity is reset for every test. */
+    @BeforeEach
+    public void enableWritesOnSlackOnly() {
+        var current = componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
+                .method(McpWritePolicyEntity::get)
+                .invoke();
+        componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
+                .method(McpWritePolicyEntity::select)
+                .invoke(new McpWritePolicyEntity.SelectCommand(List.of("slack"), current.version(), "test-setup"));
     }
 
     /** An MCP client's Bearer token, what {@code POST /mcp} accepts. */

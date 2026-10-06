@@ -5,55 +5,88 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static io.akka.mcp.gateway.application.McpWritePolicyEntity.Outcome.SAVED;
+import static io.akka.mcp.gateway.application.McpWritePolicyEntity.Outcome.STALE;
+import static io.akka.mcp.gateway.application.McpWritePolicyEntity.Outcome.UNCHANGED;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class McpWritePolicyEntityTest {
 
-    @Test
-    public void get_beforeAnyoneSaved_isUnconfigured() {
-        var testKit = KeyValueEntityTestKit.of(McpWritePolicyEntity.ENTITY_ID, McpWritePolicyEntity::new);
+    private static KeyValueEntityTestKit<io.akka.mcp.gateway.domain.WritePolicy, McpWritePolicyEntity> newTestKit() {
+        return KeyValueEntityTestKit.of(McpWritePolicyEntity.ENTITY_ID, McpWritePolicyEntity::new);
+    }
 
-        var state = testKit.method(McpWritePolicyEntity::get).invoke().getReply();
-
-        assertThat(state.configured()).isFalse();
-        assertThat(state.enabledMcpIds()).isEmpty();
+    private static McpWritePolicyEntity.SelectCommand select(long basedOn, String by, String... ids) {
+        return new McpWritePolicyEntity.SelectCommand(List.of(ids), basedOn, by);
     }
 
     @Test
-    public void set_storesTheSelectionTidiedAndRecordsWhoSavedIt() {
-        var testKit = KeyValueEntityTestKit.of(McpWritePolicyEntity.ENTITY_ID, McpWritePolicyEntity::new);
+    public void get_beforeAnyoneSaved_hasNothingEnabled() {
+        var policy = newTestKit().method(McpWritePolicyEntity::get).invoke().getReply();
 
-        var state = testKit.method(McpWritePolicyEntity::set)
-                .invoke(new McpWritePolicyEntity.SetCommand(List.of("slack", " google-workspace-gmail ", "slack", ""), "admin@example.com"))
-                .getReply();
-
-        assertThat(state.configured()).isTrue();
-        assertThat(state.enabledMcpIds()).containsExactly("google-workspace-gmail", "slack");
-        assertThat(state.updatedBy()).isEqualTo("admin@example.com");
-        assertThat(state.updatedAt()).isNotNull();
-        assertThat(testKit.getState()).isEqualTo(state);
+        assertThat(policy.enabledMcpIds()).isEmpty();
+        assertThat(policy.updatedBy()).isNull();
     }
 
     @Test
-    public void set_withNothingSelected_isStillConfigured() {
-        var testKit = KeyValueEntityTestKit.of(McpWritePolicyEntity.ENTITY_ID, McpWritePolicyEntity::new);
+    public void select_savesAndReportsWhatWasEnabledBefore() {
+        var testKit = newTestKit();
 
-        var state = testKit.method(McpWritePolicyEntity::set)
-                .invoke(new McpWritePolicyEntity.SetCommand(List.of(), "admin@example.com"))
-                .getReply();
+        var result = testKit.method(McpWritePolicyEntity::select).invoke(select(0, "admin@example.com", "slack")).getReply();
 
-        assertThat(state.configured()).isTrue();
-        assertThat(state.enabledMcpIds()).isEmpty();
+        assertThat(result.outcome()).isEqualTo(SAVED);
+        assertThat(result.policy().enabledMcpIds()).containsExactly("slack");
+        assertThat(result.policy().updatedBy()).isEqualTo("admin@example.com");
+        assertThat(result.previousEnabledMcpIds()).isEmpty();
+        assertThat(testKit.getState()).isEqualTo(result.policy());
     }
 
     @Test
-    public void set_replacesThePreviousSelection() {
-        var testKit = KeyValueEntityTestKit.of(McpWritePolicyEntity.ENTITY_ID, McpWritePolicyEntity::new);
-        testKit.method(McpWritePolicyEntity::set).invoke(new McpWritePolicyEntity.SetCommand(List.of("slack"), "a@example.com"));
+    public void select_replacesThePreviousSelection() {
+        var testKit = newTestKit();
+        testKit.method(McpWritePolicyEntity::select).invoke(select(0, "a@example.com", "slack"));
 
-        testKit.method(McpWritePolicyEntity::set).invoke(new McpWritePolicyEntity.SetCommand(List.of("hubspot"), "b@example.com"));
+        var result = testKit.method(McpWritePolicyEntity::select).invoke(select(1, "b@example.com", "hubspot")).getReply();
 
+        assertThat(result.outcome()).isEqualTo(SAVED);
+        assertThat(result.previousEnabledMcpIds()).containsExactly("slack");
         assertThat(testKit.getState().enabledMcpIds()).containsExactly("hubspot");
         assertThat(testKit.getState().updatedBy()).isEqualTo("b@example.com");
+    }
+
+    @Test
+    public void select_withNothingSelected_clearsEarlierSelections() {
+        var testKit = newTestKit();
+        testKit.method(McpWritePolicyEntity::select).invoke(select(0, "a@example.com", "slack"));
+
+        var result = testKit.method(McpWritePolicyEntity::select).invoke(select(1, "b@example.com")).getReply();
+
+        assertThat(result.outcome()).isEqualTo(SAVED);
+        assertThat(testKit.getState().enabledMcpIds()).isEmpty();
+    }
+
+    @Test
+    public void select_ofTheSameIds_changesNothing() {
+        var testKit = newTestKit();
+        testKit.method(McpWritePolicyEntity::select).invoke(select(0, "a@example.com", "slack", "hubspot"));
+        var before = testKit.getState();
+
+        var result = testKit.method(McpWritePolicyEntity::select).invoke(select(1, "b@example.com", "hubspot", "slack")).getReply();
+
+        assertThat(result.outcome()).isEqualTo(UNCHANGED);
+        assertThat(testKit.getState()).isEqualTo(before);
+    }
+
+    @Test
+    public void select_basedOnAnOlderVersion_isRejectedAndLeavesTheNewerChangeInPlace() {
+        var testKit = newTestKit();
+        testKit.method(McpWritePolicyEntity::select).invoke(select(0, "a@example.com", "slack"));
+
+        var result = testKit.method(McpWritePolicyEntity::select).invoke(select(0, "b@example.com", "hubspot")).getReply();
+
+        assertThat(result.outcome()).isEqualTo(STALE);
+        assertThat(result.policy().enabledMcpIds()).containsExactly("slack");
+        assertThat(testKit.getState().enabledMcpIds()).containsExactly("slack");
+        assertThat(testKit.getState().updatedBy()).isEqualTo("a@example.com");
     }
 }

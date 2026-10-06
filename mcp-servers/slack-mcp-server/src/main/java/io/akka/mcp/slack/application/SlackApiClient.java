@@ -16,19 +16,25 @@ import java.nio.charset.StandardCharsets;
  */
 public class SlackApiClient {
 
-    private static final String BASE = "https://slack.com/api/";
+    private static final String DEFAULT_BASE = "https://slack.com/api/";
     private static final String MISSING_SCOPE = "missing_scope";
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String token;
+    private final String base;
 
     public SlackApiClient(String token) {
+        this(token, DEFAULT_BASE);
+    }
+
+    SlackApiClient(String token, String base) {
         this.token = token;
+        this.base = base;
     }
 
     public JsonNode listChannels(String cursor, int limit) throws Exception {
-        String url = BASE + "conversations.list?types=public_channel,private_channel,mpim,im"
+        String url = base + "conversations.list?types=public_channel,private_channel,mpim,im"
                 + "&exclude_archived=true"
                 + "&limit=" + Math.min(limit, 200)
                 + (cursor != null && !cursor.isBlank() ? "&cursor=" + encode(cursor) : "");
@@ -36,7 +42,7 @@ public class SlackApiClient {
     }
 
     public JsonNode channelHistory(String channelId, String oldest, String latest, int limit) throws Exception {
-        String url = BASE + "conversations.history?channel=" + encode(channelId)
+        String url = base + "conversations.history?channel=" + encode(channelId)
                 + "&limit=" + Math.min(limit, 200)
                 + (oldest != null && !oldest.isBlank() ? "&oldest=" + encode(oldest) : "")
                 + (latest != null && !latest.isBlank() ? "&latest=" + encode(latest) : "");
@@ -44,22 +50,22 @@ public class SlackApiClient {
     }
 
     public JsonNode threadReplies(String channelId, String threadTs, int limit) throws Exception {
-        String url = BASE + "conversations.replies?channel=" + encode(channelId)
+        String url = base + "conversations.replies?channel=" + encode(channelId)
                 + "&ts=" + encode(threadTs)
                 + "&limit=" + Math.min(limit, 200);
         return call(url);
     }
 
     public JsonNode fileInfo(String fileId) throws Exception {
-        return call(BASE + "files.info?file=" + encode(fileId));
+        return call(base + "files.info?file=" + encode(fileId));
     }
 
     public JsonNode userInfo(String userId) throws Exception {
-        return call(BASE + "users.info?user=" + encode(userId));
+        return call(base + "users.info?user=" + encode(userId));
     }
 
     public JsonNode searchMessages(String query, int page, int count) throws Exception {
-        String url = BASE + "search.messages?query=" + encode(query)
+        String url = base + "search.messages?query=" + encode(query)
                 + "&count=" + Math.min(count, 100)
                 + "&page=" + Math.max(page, 1);
         return call(url);
@@ -79,7 +85,7 @@ public class SlackApiClient {
         body.put("text", text);
         if (threadTs != null && !threadTs.isBlank()) body.put("thread_ts", threadTs);
         try {
-            return callPost(BASE + "chat.postMessage", MAPPER.writeValueAsString(body));
+            return callPost(base + "chat.postMessage", MAPPER.writeValueAsString(body));
         } catch (SlackApiException e) {
             if (MISSING_SCOPE.equals(e.slackError())) {
                 throw new SlackApiException(MISSING_SCOPE

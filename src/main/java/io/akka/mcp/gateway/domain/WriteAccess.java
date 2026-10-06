@@ -1,18 +1,14 @@
 package io.akka.mcp.gateway.domain;
 
-import java.util.Arrays;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * Decides who may run write tools on which downstream MCP.
  *
- * Two independent conditions must both hold: the connector itself is write-enabled by the
- * operator, and the caller is in the writer group. An empty connector list means every MCP is
- * read-only, so an unconfigured deployment fails closed.
+ * Two independent conditions must both hold: an admin has enabled writes on the connector, and the
+ * caller is in the writer group. With nothing enabled every MCP is read-only.
  */
 public record WriteAccess(Set<String> enabledMcpIds, String writerGroup) {
 
@@ -20,32 +16,14 @@ public record WriteAccess(Set<String> enabledMcpIds, String writerGroup) {
         enabledMcpIds = Set.copyOf(enabledMcpIds);
     }
 
-    /** @param enabledMcpIdsCsv comma-separated MCP ids, e.g. {@code "slack,google-workspace-gmail"}; blank enables none */
-    public static WriteAccess parse(String enabledMcpIdsCsv, String writerGroup) {
-        var ids = enabledMcpIdsCsv == null ? Set.<String>of()
-                : Arrays.stream(enabledMcpIdsCsv.split(","))
-                        .map(String::trim)
-                        .filter(id -> !id.isEmpty())
-                        .collect(Collectors.toSet());
-        return new WriteAccess(ids, writerGroup);
-    }
-
-    /**
-     * The selection an admin saved wins; with none saved the deployment config applies. If the saved
-     * selection cannot be read the answer is no writes anywhere rather than the config value, since
-     * config may be broader than what an admin deliberately narrowed.
-     *
-     * @param stored the admin's saved selection, empty if an admin has never saved one
-     */
-    public static WriteAccess resolve(Supplier<Optional<Set<String>>> stored, WriteAccess configured,
-                                      Consumer<RuntimeException> onStoreFailure) {
+    /** If the saved selection cannot be read the answer is no writes anywhere, and the failure is reported. */
+    public static WriteAccess resolve(Supplier<Set<String>> saved, String writerGroup,
+                                      Consumer<RuntimeException> onReadFailure) {
         try {
-            return stored.get()
-                    .map(ids -> new WriteAccess(ids, configured.writerGroup()))
-                    .orElse(configured);
+            return new WriteAccess(saved.get(), writerGroup);
         } catch (RuntimeException e) {
-            onStoreFailure.accept(e);
-            return new WriteAccess(Set.of(), configured.writerGroup());
+            onReadFailure.accept(e);
+            return new WriteAccess(Set.of(), writerGroup);
         }
     }
 
