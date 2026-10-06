@@ -1,7 +1,10 @@
 package io.akka.mcp.gateway.domain;
 
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +28,25 @@ public record WriteAccess(Set<String> enabledMcpIds, String writerGroup) {
                         .filter(id -> !id.isEmpty())
                         .collect(Collectors.toSet());
         return new WriteAccess(ids, writerGroup);
+    }
+
+    /**
+     * The selection an admin saved wins; with none saved the deployment config applies. If the saved
+     * selection cannot be read the answer is no writes anywhere rather than the config value, since
+     * config may be broader than what an admin deliberately narrowed.
+     *
+     * @param stored the admin's saved selection, empty if an admin has never saved one
+     */
+    public static WriteAccess resolve(Supplier<Optional<Set<String>>> stored, WriteAccess configured,
+                                      Consumer<RuntimeException> onStoreFailure) {
+        try {
+            return stored.get()
+                    .map(ids -> new WriteAccess(ids, configured.writerGroup()))
+                    .orElse(configured);
+        } catch (RuntimeException e) {
+            onStoreFailure.accept(e);
+            return new WriteAccess(Set.of(), configured.writerGroup());
+        }
     }
 
     public boolean connectorAllows(String mcpId) {

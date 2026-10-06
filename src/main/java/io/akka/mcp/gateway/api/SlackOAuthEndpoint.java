@@ -10,6 +10,7 @@ import io.akka.mcp.gateway.application.RemoteMcpClient;
 import io.akka.mcp.gateway.application.SlackConnectionEntity;
 import io.akka.mcp.gateway.application.SlackMcpClient;
 import io.akka.mcp.gateway.domain.UserSession;
+import io.akka.mcp.gateway.domain.WriteAccess;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -78,6 +79,10 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
 
     @Override
     protected String getExtraAuthParams(UserSession session) {
+        return userScopeParam(session, currentWriteAccess());
+    }
+
+    static String userScopeParam(UserSession session, WriteAccess writeAccess) {
         var scopes = new ArrayList<>(READ_USER_SCOPES);
         if (writeAccess.permits(SlackMcpClient.MCP_ID, session)) scopes.add(WRITE_USER_SCOPE);
         return "&user_scope=" + encode(String.join(" ", scopes));

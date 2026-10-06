@@ -93,6 +93,7 @@
                 <hr class="nav-divider" id="nav-admin-divider" style="display:none">
                 <a href="/okta-status" id="nav-okta-status" style="display:none">Okta Status</a>
                 <a href="/interactions" id="nav-interactions" style="display:none">Interactions</a>
+                <a href="/admin/write-access" id="nav-write-access" style="display:none">Write access</a>
                 <hr class="nav-divider">
                 <a href="/auth/logout" class="danger">Sign out</a>
             </nav>
@@ -569,6 +570,7 @@
                     document.getElementById('nav-admin-divider').style.display = '';
                     document.getElementById('nav-okta-status').style.display = '';
                     document.getElementById('nav-interactions').style.display = '';
+                    document.getElementById('nav-write-access').style.display = '';
                 }
 
                 fetch('/mcp/access', { cache: 'no-store' })

@@ -2,7 +2,10 @@ package io.akka.mcp.gateway.domain;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -54,5 +57,41 @@ public class WriteAccessTest {
         var access = WriteAccess.parse("slack", "");
 
         assertThat(access.permits("slack", sessionIn(WRITER_GROUP, ""))).isFalse();
+    }
+
+    private static final WriteAccess CONFIGURED = WriteAccess.parse("slack", WRITER_GROUP);
+
+    @Test
+    public void resolve_prefersTheSavedSelectionOverConfig() {
+        var access = WriteAccess.resolve(() -> Optional.of(Set.of("google-workspace-gmail")), CONFIGURED, e -> {});
+
+        assertThat(access.connectorAllows("google-workspace-gmail")).isTrue();
+        assertThat(access.connectorAllows("slack")).isFalse();
+    }
+
+    @Test
+    public void resolve_aSavedEmptySelectionDisablesEverythingEvenIfConfigEnablesSome() {
+        var access = WriteAccess.resolve(() -> Optional.of(Set.of()), CONFIGURED, e -> {});
+
+        assertThat(access.connectorAllows("slack")).isFalse();
+    }
+
+    @Test
+    public void resolve_fallsBackToConfigWhenNothingWasEverSaved() {
+        var access = WriteAccess.resolve(Optional::empty, CONFIGURED, e -> {});
+
+        assertThat(access.connectorAllows("slack")).isTrue();
+        assertThat(access.connectorAllows("google-workspace-gmail")).isFalse();
+    }
+
+    @Test
+    public void resolve_failsClosedRatherThanFallingBackToConfigWhenTheStoreCannotBeRead() {
+        var failures = new ArrayList<RuntimeException>();
+
+        var access = WriteAccess.resolve(() -> { throw new IllegalStateException("store down"); }, CONFIGURED, failures::add);
+
+        assertThat(access.connectorAllows("slack")).isFalse();
+        assertThat(access.writerGroup()).isEqualTo(WRITER_GROUP);
+        assertThat(failures).hasSize(1);
     }
 }
