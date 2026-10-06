@@ -12,6 +12,7 @@ import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.UserSession;
+import io.akka.mcp.gateway.domain.WriteAccess;
 
 /**
  * Base class for endpoints that require an authenticated user session.
@@ -44,6 +45,7 @@ public abstract class AbstractProtectedEndpoint extends AbstractHttpEndpoint {
     protected final String writerGroup;
     protected final String adminGroup;
     protected final String escalaterGroup;
+    protected final WriteAccess writeAccess;
 
     protected AbstractProtectedEndpoint(ComponentClient componentClient, Config config) {
         this.componentClient = componentClient;
@@ -52,6 +54,7 @@ public abstract class AbstractProtectedEndpoint extends AbstractHttpEndpoint {
         this.writerGroup = config.getString("okta.groups.writer");
         this.adminGroup = config.getString("okta.groups.admin");
         this.escalaterGroup = config.getString("okta.groups.escalater");
+        this.writeAccess = WriteAccess.parse(config.getString("mcp.write-enabled"), writerGroup);
     }
 
     /** Resolves the browser's {@code SESSION} cookie only. Never accepts a Bearer token. */

@@ -48,6 +48,7 @@ Two variables are shared by every system and must always be set: `ANTHROPIC_API_
 Access control is also configured through the environment — none of these have built-in defaults, so the gateway fails closed until you set them:
 - `OKTA_ALLOWED_EMAIL_DOMAIN` — the email domain users must sign in with (e.g. `example.com`). Leave unset to allow any Okta-authenticated email.
 - `OKTA_GROUP_READER`, `OKTA_GROUP_WRITER`, `OKTA_GROUP_ADMIN`, `OKTA_GROUP_ESCALATER` — the Okta group names that grant each gateway role (see [Access and permissions](#access-and-permissions)). A role with no group set is granted to nobody.
+- `MCP_WRITE_ENABLED`: comma-separated ids of the systems whose write tools may run, e.g. `slack,google-workspace-gmail,google-workspace-calendar,google-workspace-docs`. Every system not listed is read-only through the gateway, so leaving it unset disables writes everywhere. The ids are the `mcpId` values returned by `GET /mcp/access` (for example `slack`, `salesforce`, `zoho-desk`, `hubspot`, `reo`, `groundcover`, `okta-admin`, `google-workspace-drive`, `google-workspace-docs`, `google-workspace-gmail`, `google-workspace-calendar`).
 - `MCP_OAUTH_REDIRECT_HOST_ALLOWLIST` — comma-separated hostnames allowed for `https://` `redirect_uris` when an MCP client dynamically registers itself (e.g. `claude.ai,claude.com`). Loopback redirect URIs (`127.0.0.1`, `localhost`, `[::1]`) are always allowed, per RFC 8252. Leave unset to reject every https redirect host, so only loopback clients can register; production deployments serving hosted clients such as claude.ai must set it.
 
 Each system is also gated by an Okta application, identified by its app instance id in `<SYSTEM>_OKTA_APP_ID` (listed per system below). Leaving one unset disables app-gating for that system (it appears accessible to everyone who can otherwise reach it).
@@ -155,7 +156,7 @@ The group names below are the conventional ones; the operator maps them to Okta 
 | Group | What it grants |
 |---|---|
 | `mcp-gateway-reader` | Run tools that only read data — searching tickets, looking up records, reading files. |
-| `mcp-gateway-writer` | Run tools that change data — creating a ticket, sending a reply, updating a record. |
+| `mcp-gateway-writer` | Run tools that change data (posting a message, creating a calendar event, drafting an email) on the systems where writes are enabled (see [Systems decide whether writes are possible](#systems-decide-whether-writes-are-possible)). |
 | `mcp-gateway-admin` | View the full interaction log for every user, flag entries for escalation, and open the Okta account-status page. |
 
 Reader and writer are independent, not tiered. If you only hold `mcp-gateway-reader`, a request to create or update something is refused. Holding neither means you can sign in and see your own permissions page, but every tool call is refused.
@@ -178,6 +179,12 @@ Every system is tied to an Okta application. Being assigned that application is 
 | Okta admin lookups | Okta MCP Admin |
 
 Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
+
+### Systems decide whether writes are possible
+
+Being in the writer group is necessary but not sufficient. A system must also be listed in `MCP_WRITE_ENABLED` by whoever operates the gateway; every other system is read-only for everyone, writers included. A write tool on a read-only system is refused, and it is not shown in the tool list. The dashboard marks each system **Read-only** or **Read** and **Write** for you specifically, so a reader never sees a **Write** badge.
+
+Enabling a system is a deliberate decision: review the OAuth scopes users grant and the tools the downstream server exposes first. Where a system's sign-in requests write permissions (today only Slack's `chat:write`), they are requested only from users who are in the writer group. If you gain the writer role after connecting Slack, disconnect and reconnect it to grant posting.
 
 ### Connecting is still per-person
 

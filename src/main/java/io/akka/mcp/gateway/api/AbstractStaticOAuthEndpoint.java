@@ -10,6 +10,7 @@ import akka.javasdk.http.HttpResponses;
 import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.McpInteractionEntity;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
+import io.akka.mcp.gateway.domain.UserSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,6 +59,9 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
     protected List<RemoteMcpClient> mcpClientsToWarm() { return List.of(createMcpClient()); }
 
     protected String getExtraAuthParams() { return ""; }
+
+    /** Per-user variant for connectors whose requested scopes depend on the caller's role. Defaults to {@link #getExtraAuthParams()}. */
+    protected String getExtraAuthParams(UserSession session) { return getExtraAuthParams(); }
 
     /** When present, {@code /connect} refuses with 409 and this message instead of starting OAuth.
      *  Enforced server-side so a dashboard-only lockout can't be bypassed by hitting the URL directly. */
@@ -184,7 +188,7 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
                     + "&code_challenge=" + encode(codeChallenge)
                     + "&code_challenge_method=S256"
                     + "&scope=" + encode(getScope())
-                    + getExtraAuthParams();
+                    + getExtraAuthParams(session);
 
             return HttpResponse.create()
                     .withStatus(StatusCodes.FOUND)

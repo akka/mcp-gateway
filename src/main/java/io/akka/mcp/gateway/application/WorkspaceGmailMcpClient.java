@@ -46,13 +46,6 @@ public class WorkspaceGmailMcpClient implements RemoteMcpClient {
     @Override
     public String getRequiredOktaAppId() { return oktaAppId; }
 
-    /**
-     * Write-capable: the Workspace OAuth grant includes `gmail.compose`, so drafting and
-     * sending mail is supported.
-     */
-    @Override
-    public boolean allowsWrites() { return true; }
-
     @Override
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(

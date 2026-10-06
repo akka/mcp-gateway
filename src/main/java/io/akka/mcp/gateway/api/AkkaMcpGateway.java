@@ -32,6 +32,7 @@ import io.akka.mcp.gateway.application.SlackMcpClient;
 import io.akka.mcp.gateway.application.ZohoMcpClient;
 import io.akka.mcp.gateway.domain.McpConfig;
 import io.akka.mcp.gateway.domain.UserSession;
+import io.akka.mcp.gateway.domain.WriteAccess;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,7 +110,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
      *
      * Handled methods: initialize, notifications/initialized, tools/list, tools/call, ping
      */
-    /** @param writeAllowed whether this MCP may run write tools at all (see RemoteMcpClient#allowsWrites) */
+    /** @param writeAllowed whether the calling user may run write tools on this MCP (see {@link WriteAccess#permits}) */
     public record McpAccessEntry(String mcpId, String mcpName, boolean writeAllowed) {}
     public record McpAccessResponse(List<McpAccessEntry> accessible, List<McpAccessEntry> inaccessible) {}
 
@@ -122,7 +123,8 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         for (var client : clients) {
             if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
             var hasAccess = appAssigned(session, client);
-            var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName(), client.allowsWrites());
+            var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName(),
+                    writeAccess.permits(client.getMcpId(), session));
             if (hasAccess) accessible.add(entry); else inaccessible.add(entry);
         }
         return HttpResponses.ok(new McpAccessResponse(accessible, inaccessible));
@@ -221,11 +223,11 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                     pending.put(client, TOOLS_EXECUTOR.submit(() -> client.listTools(userId)));
                 } else {
                     log.info("MCP tools/list: {} disconnected, using registry cache", clientName);
-                    addCachedTools(client.getMcpId(), allTools);
+                    addCachedTools(client.getMcpId(), allTools, session);
                 }
             } catch (Exception e) {
                 log.error("MCP tools/list: could not start fetch for {}: {} — using cache", clientName, e.getMessage(), e);
-                addCachedTools(client.getMcpId(), allTools);
+                addCachedTools(client.getMcpId(), allTools, session);
             }
         }
 
@@ -239,14 +241,14 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                 entry.getValue().cancel(true);
                 log.error("MCP tools/list: live fetch failed/timed out for {}: {} — falling back to cache",
                         clientName, e.getMessage());
-                addCachedTools(client.getMcpId(), allTools);
+                addCachedTools(client.getMcpId(), allTools, session);
                 continue;
             }
             if (entries.isEmpty()) {
                 // Connected but returned nothing (transient upstream hiccup): keep the last-known
                 // cache rather than overwriting it with an empty list.
                 log.warn("MCP tools/list: {} returned 0 live tools — falling back to cache", clientName);
-                addCachedTools(client.getMcpId(), allTools);
+                addCachedTools(client.getMcpId(), allTools, session);
                 continue;
             }
             log.info("MCP tools/list: got {} live tools from {}", entries.size(), clientName);
@@ -258,13 +260,20 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             } catch (Exception e) {
                 log.error("MCP tools/list: failed to cache tools for {}: {}", clientName, e.getMessage());
             }
-            entries.forEach(e -> allTools.add(e.toolSpec()));
+            entries.stream()
+                    .filter(e -> listable(client.getMcpId(), e.meta(), session))
+                    .forEach(e -> allTools.add(e.toolSpec()));
         }
 
         log.info("MCP tools/list: returning {} tools total", allTools.size());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tools", allTools);
         return responseJson(id, result);
+    }
+
+    /** A write tool is only advertised to callers who could actually run it; the registry still holds the full list. */
+    private boolean listable(String mcpId, McpConfig.ToolMeta meta, UserSession session) {
+        return !meta.isWrite() || writeAccess.permits(mcpId, session);
     }
 
     /** Add tools from a local, in-memory client (the how-to client) without a network fetch. */
@@ -279,14 +288,16 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
     }
 
     /** Best-effort: append a client's last-known cached tools. Never throws. */
-    private void addCachedTools(String mcpId, List<Map<String, Object>> allTools) {
+    private void addCachedTools(String mcpId, List<Map<String, Object>> allTools, UserSession session) {
         try {
             var cached = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                     .method(McpRegistryEntity::findByMcpId)
                     .invoke(mcpId);
             cached.ifPresent(cfg -> {
                 log.info("MCP tools/list: adding {} cached tools for {}", cfg.tools().size(), mcpId);
-                cfg.tools().forEach(meta -> allTools.add(meta.toToolSpec()));
+                cfg.tools().stream()
+                        .filter(meta -> listable(mcpId, meta, session))
+                        .forEach(meta -> allTools.add(meta.toToolSpec()));
             });
         } catch (Exception e) {
             log.error("MCP tools/list: cache lookup failed for {}: {}", mcpId, e.getMessage());
@@ -369,19 +380,25 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         // A read-only MCP refuses every write tool regardless of the caller's groups. Checked
         // before the group guard so the error names the real reason ("connected read-only")
         // instead of blaming the user's permissions.
-        if (isWrite && !client.allowsWrites()) {
-            log.warn("MCP tools/call: write rejected for user {}: {} is read-only, tool={}",
-                    userEmail, client.getMcpName(), toolName);
+        if (isWrite && !writeAccess.connectorAllows(client.getMcpId())) {
+            boolean classified = toolMeta.isPresent();
+            log.warn("MCP tools/call: write rejected for user {}: {} is read-only, tool={}, classified={}",
+                    userEmail, client.getMcpName(), toolName, classified);
             componentClient
                     .forEventSourcedEntity(UUID.randomUUID().toString())
                     .method(McpInteractionEntity::record)
                     .invoke(new McpInteractionEntity.RecordCommand(
                             userEmail, client.getMcpId(), toolName,
-                            Map.of("reason", "mcp-read-only"), "write-rejected"));
+                            Map.of("reason", classified ? "mcp-read-only" : "tool-unclassified"),
+                            "write-rejected"));
+            String message = classified
+                    ? client.getMcpName() + " is connected read-only through the gateway; "
+                            + "write tools such as `" + toolName + "` are not permitted."
+                    : "`" + toolName + "` has not been classified as read or write yet, so the gateway "
+                            + "treats it as a write, and " + client.getMcpName() + " is read-only through the gateway. "
+                            + "Refresh your tool list (see `howto_refresh_tools`) and try again.";
             Map<String, Object> resp = new LinkedHashMap<>();
-            resp.put("content", List.of(Map.of("type", "text", "text",
-                    client.getMcpName() + " is connected read-only through the gateway; "
-                            + "write tools such as `" + toolName + "` are not permitted.")));
+            resp.put("content", List.of(Map.of("type", "text", "text", message)));
             resp.put("isError", true);
             return responseJson(id, resp);
         }

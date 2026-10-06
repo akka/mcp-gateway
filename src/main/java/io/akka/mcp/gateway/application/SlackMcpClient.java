@@ -54,17 +54,11 @@ public class SlackMcpClient implements RemoteMcpClient {
     @Override
     public String getRequiredOktaAppId() { return oktaAppId; }
 
-    /**
-     * Write-capable: posting messages and replies is supported.
-     */
-    @Override
-    public boolean allowsWrites() { return true; }
-
     @Override
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(
                 "Step-by-step instructions for connecting your Slack workspace to the MCP Gateway.",
-                "Search messages, list channels, read conversations",
+                "Search messages, list channels, read conversations, post messages (writer role)",
                 """
                 # How to Connect Slack
 
@@ -93,6 +87,8 @@ public class SlackMcpClient implements RemoteMcpClient {
                 - Search messages across channels
                 - List channels and members
                 - Read conversation history
+                - Post messages and thread replies (needs the writer role; if you gained it after \
+                connecting, disconnect and reconnect Slack to grant posting)
 
                 ## Troubleshooting
                 - If tools are missing, verify that the Slack MCP URL is configured by your admin.

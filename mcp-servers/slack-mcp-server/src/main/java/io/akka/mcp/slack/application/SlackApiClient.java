@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 public class SlackApiClient {
 
     private static final String BASE = "https://slack.com/api/";
+    private static final String MISSING_SCOPE = "missing_scope";
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -69,15 +70,24 @@ public class SlackApiClient {
      * ({@code C…}/{@code D…}/{@code G…}); {@code @name}/{@code #name} aren't accepted by the API.
      * Pass {@code threadTs} to reply in a thread; omit for a new top-level message.
      *
-     * Requires the user token to carry the {@code chat:write} scope. Slack returns
-     * {@code missing_scope} otherwise — surface that as-is so the caller knows to reconnect.
+     * Requires the user token to carry the {@code chat:write} scope. The gateway only requests it
+     * for writers, so {@code missing_scope} means the user connected before gaining write access.
      */
     public JsonNode postMessage(String channel, String text, String threadTs) throws Exception {
         var body = MAPPER.createObjectNode();
         body.put("channel", channel);
         body.put("text", text);
         if (threadTs != null && !threadTs.isBlank()) body.put("thread_ts", threadTs);
-        return callPost(BASE + "chat.postMessage", MAPPER.writeValueAsString(body));
+        try {
+            return callPost(BASE + "chat.postMessage", MAPPER.writeValueAsString(body));
+        } catch (SlackApiException e) {
+            if (MISSING_SCOPE.equals(e.slackError())) {
+                throw new SlackApiException(MISSING_SCOPE
+                        + ": your Slack connection cannot post messages. Posting needs the gateway writer role; "
+                        + "once you have it, disconnect and reconnect Slack on the gateway dashboard to grant it.");
+            }
+            throw e;
+        }
     }
 
     private JsonNode call(String url) throws Exception {
@@ -124,8 +134,13 @@ public class SlackApiClient {
     }
 
     public static class SlackApiException extends RuntimeException {
+        private final String slackError;
+
         public SlackApiException(String slackError) {
             super("Slack API error: " + slackError);
+            this.slackError = slackError;
         }
+
+        String slackError() { return slackError; }
     }
 }

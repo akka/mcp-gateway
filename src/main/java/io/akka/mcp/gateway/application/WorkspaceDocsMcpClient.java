@@ -46,13 +46,6 @@ public class WorkspaceDocsMcpClient implements RemoteMcpClient {
     @Override
     public String getRequiredOktaAppId() { return oktaAppId; }
 
-    /**
-     * Write-capable: the Workspace OAuth grant includes `documents` and `drive.file`, so
-     * editing documents the connector created or the user opened with it is supported.
-     */
-    @Override
-    public boolean allowsWrites() { return true; }
-
     @Override
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(
