@@ -28,7 +28,8 @@ import java.util.Map;
  *   Authorization: Bearer xoxp-...
  *
  *
- * All tools are read-only (readOnlyHint: true). The token is the user's own
+ * Every tool is read-only (readOnlyHint: true) except slack_post_message, which is advertised with
+ * readOnlyHint: false so the gateway applies its write gate to it. The token is the user's own
  * OAuth token so they can only access channels and data they normally can see.
  */
 @HttpEndpoint("/mcp")

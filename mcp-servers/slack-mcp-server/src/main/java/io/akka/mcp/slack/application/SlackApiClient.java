@@ -89,8 +89,8 @@ public class SlackApiClient {
         } catch (SlackApiException e) {
             if (MISSING_SCOPE.equals(e.slackError())) {
                 throw new SlackApiException(MISSING_SCOPE
-                        + ": your Slack connection cannot post messages. Posting needs the gateway writer role; "
-                        + "once you have it, disconnect and reconnect Slack on the gateway dashboard to grant it.");
+                        + ": your Slack connection cannot post messages yet. Disconnect and reconnect Slack on the "
+                        + "gateway dashboard to grant posting (this also needs the gateway writer role).");
             }
             throw e;
         }

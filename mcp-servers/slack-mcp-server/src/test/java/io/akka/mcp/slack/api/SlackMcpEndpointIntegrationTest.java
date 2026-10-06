@@ -69,7 +69,7 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
                 .responseBodyAs(String.class)
                 .invoke();
 
-        assertThat(JsonSupport.getObjectMapper().readTree(response.body()).path("error").path("message").asText())
-                .contains("Unauthorized");
+        var error = JsonSupport.getObjectMapper().readTree(response.body()).path("error");
+        assertThat(error.path("code").asInt()).isEqualTo(-32001);
     }
 }

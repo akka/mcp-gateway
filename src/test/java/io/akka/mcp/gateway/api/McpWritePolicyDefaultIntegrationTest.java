@@ -8,6 +8,9 @@ import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.application.SlackConnectionEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
+import io.akka.mcp.gateway.testsupport.FakeMcpServer;
+import io.akka.mcp.gateway.testsupport.FakeMcpServer.AdvertisedTool;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -28,14 +31,21 @@ public class McpWritePolicyDefaultIntegrationTest extends TestKitSupport {
     private static final String WRITER_GROUP = "mcp-gateway-writer";
     private static final String EMAIL = "user@lightbend.com";
 
+    private static final FakeMcpServer SLACK = FakeMcpServer.start().advertising(new AdvertisedTool("slack_post_message", false));
+
+    @AfterAll
+    public static void stopFakeUpstream() {
+        SLACK.close();
+    }
+
     @Override
     protected TestKit.Settings testKitSettings() {
         return TestKit.Settings.DEFAULT.withAdditionalConfig("""
-                slack.mcp-url = "http://localhost:1/mcp"
+                slack.mcp-url = "%s"
                 okta.groups.admin = "%s"
                 okta.groups.reader = "%s"
                 okta.groups.writer = "%s"
-                """.formatted(ADMIN_GROUP, READER_GROUP, WRITER_GROUP));
+                """.formatted(SLACK.url(), ADMIN_GROUP, READER_GROUP, WRITER_GROUP));
     }
 
     private String browserSession(List<String> groups) {
@@ -85,8 +95,8 @@ public class McpWritePolicyDefaultIntegrationTest extends TestKitSupport {
                 .responseBodyAs(String.class)
                 .invoke();
 
-        var text = JsonSupport.getObjectMapper().readTree(response.body())
-                .path("result").path("content").get(0).path("text").asText();
-        assertThat(text).contains("read-only");
+        var result = JsonSupport.getObjectMapper().readTree(response.body()).path("result");
+        assertThat(result.path("isError").asBoolean(false)).isTrue();
+        assertThat(SLACK.callsTo("slack_post_message")).isEmpty();
     }
 }

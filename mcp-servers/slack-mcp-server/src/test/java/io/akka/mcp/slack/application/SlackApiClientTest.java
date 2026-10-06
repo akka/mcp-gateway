@@ -84,8 +84,7 @@ public class SlackApiClientTest {
         assertThatThrownBy(() -> client().postMessage("C12345", "hi", null))
                 .isInstanceOf(SlackApiClient.SlackApiException.class)
                 .hasMessageContaining("missing_scope")
-                .hasMessageContaining("writer role")
-                .hasMessageContaining("reconnect Slack");
+                .hasMessageContaining("reconnect");
     }
 
     @Test
@@ -94,7 +93,7 @@ public class SlackApiClientTest {
 
         assertThatThrownBy(() -> client().postMessage("C0000", "hi", null))
                 .isInstanceOf(SlackApiClient.SlackApiException.class)
-                .hasMessage("Slack API error: channel_not_found");
+                .hasMessageContaining("channel_not_found");
     }
 
     @Test

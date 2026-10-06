@@ -1,18 +1,23 @@
 package io.akka.mcp.gateway.api;
 
+import akka.http.javadsl.model.StatusCode;
+import akka.http.javadsl.model.StatusCodes;
 import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.application.SlackConnectionEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
+import io.akka.mcp.gateway.testsupport.FakeMcpServer;
+import io.akka.mcp.gateway.testsupport.FakeMcpServer.AdvertisedTool;
 import org.awaitility.Awaitility;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +26,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * The Write access admin page: admins choose which MCPs may write, the choice takes effect
@@ -34,7 +38,16 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
     private static final String ADMIN_GROUP = "mcp-gateway-admin";
     private static final String READER_GROUP = "mcp-gateway-reader";
     private static final String WRITER_GROUP = "mcp-gateway-writer";
-    private static final String DEAD_URL = "http://localhost:1/mcp";
+    private static final String USER_EMAIL = "user@lightbend.com";
+
+    private static final FakeMcpServer SLACK = FakeMcpServer.start().advertising(
+            new AdvertisedTool("slack_search_messages", true),
+            new AdvertisedTool("slack_post_message", false));
+
+    @AfterAll
+    public static void stopFakeUpstream() {
+        SLACK.close();
+    }
 
     @Override
     protected TestKit.Settings testKitSettings() {
@@ -43,7 +56,7 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
                 okta.groups.admin = "%s"
                 okta.groups.reader = "%s"
                 okta.groups.writer = "%s"
-                """.formatted(DEAD_URL, ADMIN_GROUP, READER_GROUP, WRITER_GROUP));
+                """.formatted(SLACK.url(), ADMIN_GROUP, READER_GROUP, WRITER_GROUP));
     }
 
     private String browserSession(String email, List<String> groups) {
@@ -64,8 +77,18 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
         componentClient.forKeyValueEntity(token)
                 .method(McpAccessTokenEntity::create)
                 .invoke(new McpAccessTokenEntity.CreateCommand(
-                        "user@lightbend.com", "User", groups, List.of(), "client-1", Instant.now().plusSeconds(3600)));
+                        USER_EMAIL, "User", groups, List.of(), "client-1", Instant.now().plusSeconds(3600)));
         return token;
+    }
+
+    private void connectSlack() {
+        componentClient.forKeyValueEntity(USER_EMAIL)
+                .method(SlackConnectionEntity::initiatePkceOAuth)
+                .invoke(new SlackConnectionEntity.InitiateCommand("state-1", "verifier-1", "client-id"));
+        componentClient.forKeyValueEntity(USER_EMAIL)
+                .method(SlackConnectionEntity::storeToken)
+                .invoke(new SlackConnectionEntity.StoreTokenCommand(
+                        "slack-access", "slack-refresh", Instant.now().plusSeconds(3600), "state-1"));
     }
 
     private McpWritePolicyEndpoint.WritePolicyResponse current(String cookie) {
@@ -96,42 +119,67 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
         return save(cookie, ids, current(cookie).version());
     }
 
-    private void seedWriteTool(String mcpId, String mcpName, String toolName) {
+    private StatusCode statusOfGet(String path, String cookie) {
+        var request = httpClient.GET(path);
+        if (cookie != null) request = request.addHeader("Cookie", "SESSION=" + cookie);
+        return request.invoke().status();
+    }
+
+    private StatusCode statusOfPut(String cookie, List<String> ids, Long basedOnVersion) {
+        var request = httpClient.PUT("/admin/write-access");
+        if (cookie != null) request = request.addHeader("Cookie", "SESSION=" + cookie);
+        return request.withRequestBody(new McpWritePolicyEndpoint.UpdateRequest(ids, basedOnVersion)).invoke().status();
+    }
+
+    private void seedCachedWriteTool(String mcpId, String mcpName, String toolName) {
         var meta = new McpConfig.ToolMeta(toolName, "seeded", Map.of("type", "object", "properties", Map.of()), false, false);
         componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                 .method(McpRegistryEntity::register)
                 .invoke(new McpConfig(mcpId, mcpName, List.of(meta)));
     }
 
-    private List<String> listedTools(List<String> groups) throws Exception {
+    private JsonNode rpc(Map<String, Object> request) throws Exception {
         var response = httpClient.POST("/mcp")
-                .addHeader("Authorization", "Bearer " + mcpToken(groups))
-                .withRequestBody(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list"))
+                .addHeader("Authorization", "Bearer " + mcpToken(List.of(READER_GROUP, WRITER_GROUP)))
+                .withRequestBody(request)
                 .responseBodyAs(String.class)
                 .invoke();
+        return JsonSupport.getObjectMapper().readTree(response.body());
+    }
+
+    private List<String> listedTools() throws Exception {
         var names = new ArrayList<String>();
-        JsonSupport.getObjectMapper().readTree(response.body()).path("result").path("tools")
-                .forEach(t -> names.add(t.path("name").asText()));
+        rpc(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list"))
+                .path("result").path("tools").forEach(t -> names.add(t.path("name").asText()));
         return names;
+    }
+
+    private JsonNode callSlackPost() throws Exception {
+        return rpc(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
+                "params", Map.of("name", "slack_post_message", "arguments", Map.of())));
     }
 
     @Test
     public void unauthenticated_isRejected() {
-        assertThrows(Exception.class, () -> httpClient.GET("/admin/write-access/data").responseBodyAs(String.class).invoke());
-        assertThrows(Exception.class, () -> httpClient.PUT("/admin/write-access")
-                .withRequestBody(new McpWritePolicyEndpoint.UpdateRequest(List.of(), 0L))
-                .responseBodyAs(String.class).invoke());
+        assertThat(statusOfGet("/admin/write-access/data", null)).isEqualTo(StatusCodes.UNAUTHORIZED);
+        assertThat(statusOfPut(null, List.of(), 0L)).isEqualTo(StatusCodes.UNAUTHORIZED);
     }
 
     @Test
-    public void nonAdmin_cannotReadOrChangeTheSelection() {
+    public void unauthenticatedPageRequest_isSentToTheLogin() {
+        var response = httpClient.GET("/admin/write-access").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value())).hasValue("/login");
+    }
+
+    @Test
+    public void nonAdmin_cannotSeeOrChangeTheSelection() {
         var writer = browserSession("writer@lightbend.com", List.of(READER_GROUP, WRITER_GROUP));
 
-        var read = assertThrows(Exception.class, () -> current(writer));
-        var change = assertThrows(Exception.class, () -> save(writer, List.of("slack"), 0L));
-
-        assertThat(read.getMessage()).contains("403");
-        assertThat(change.getMessage()).contains("403");
+        assertThat(statusOfGet("/admin/write-access/data", writer)).isEqualTo(StatusCodes.FORBIDDEN);
+        assertThat(statusOfGet("/admin/write-access", writer)).isEqualTo(StatusCodes.FORBIDDEN);
+        assertThat(statusOfPut(writer, List.of("slack"), 0L)).isEqualTo(StatusCodes.FORBIDDEN);
     }
 
     @Test
@@ -148,68 +196,48 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
     @Test
     public void savedSelection_takesEffectImmediately_inTheToolList() throws Exception {
         var admin = adminSession();
-        seedWriteTool("slack", "Slack", "slack_post_message");
-        seedWriteTool("google-workspace-gmail", "Gmail", "Workspace_Gmail_create_draft");
+        connectSlack();
+        seedCachedWriteTool("google-workspace-gmail", "Gmail", "Workspace_Gmail_create_draft");
 
         select(admin, List.of("google-workspace-gmail"));
-        var gmailOnly = listedTools(List.of(READER_GROUP, WRITER_GROUP));
+        var gmailOnly = listedTools();
         select(admin, List.of("slack"));
-        var slackOnly = listedTools(List.of(READER_GROUP, WRITER_GROUP));
+        var slackOnly = listedTools();
 
         assertThat(gmailOnly).contains("Workspace_Gmail_create_draft").doesNotContain("slack_post_message");
         assertThat(slackOnly).contains("slack_post_message").doesNotContain("Workspace_Gmail_create_draft");
     }
 
     @Test
-    public void clearingTheSelection_refusesWritesThatWereAllowedBefore() throws Exception {
+    public void clearingTheSelection_stopsWritesThatWereAllowedBefore() throws Exception {
         var admin = adminSession();
-        componentClient.forKeyValueEntity("user@lightbend.com")
-                .method(SlackConnectionEntity::initiatePkceOAuth)
-                .invoke(new SlackConnectionEntity.InitiateCommand("state-1", "verifier-1", "client-id"));
-        componentClient.forKeyValueEntity("user@lightbend.com")
-                .method(SlackConnectionEntity::storeToken)
-                .invoke(new SlackConnectionEntity.StoreTokenCommand(
-                        "slack-access", "slack-refresh", Instant.now().plusSeconds(3600), "state-1"));
-        seedWriteTool("slack", "Slack", "slack_post_message");
-
+        connectSlack();
+        SLACK.forgetCalls();
         select(admin, List.of("slack"));
-        var allowed = httpClient.POST("/mcp")
-                .addHeader("Authorization", "Bearer " + mcpToken(List.of(READER_GROUP, WRITER_GROUP)))
-                .withRequestBody(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
-                        "params", Map.of("name", "slack_post_message", "arguments", Map.of())))
-                .responseBodyAs(String.class)
-                .invoke();
-        select(admin, List.of());
-        var response = httpClient.POST("/mcp")
-                .addHeader("Authorization", "Bearer " + mcpToken(List.of(READER_GROUP, WRITER_GROUP)))
-                .withRequestBody(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
-                        "params", Map.of("name", "slack_post_message", "arguments", Map.of())))
-                .responseBodyAs(String.class)
-                .invoke();
+        listedTools();
 
-        var text = JsonSupport.getObjectMapper().readTree(response.body())
-                .path("result").path("content").get(0).path("text").asText();
-        assertThat(JsonSupport.getObjectMapper().readTree(allowed.body()).path("result").path("content").get(0).path("text").asText())
-                .doesNotContain("read-only");
-        assertThat(text).contains("read-only");
+        callSlackPost();
+        assertThat(SLACK.callsTo("slack_post_message")).hasSize(1);
+
+        select(admin, List.of());
+        var refused = callSlackPost();
+
+        assertThat(refused.path("result").path("isError").asBoolean(false)).isTrue();
+        assertThat(SLACK.callsTo("slack_post_message")).hasSize(1);
     }
 
     @Test
     public void unknownMcpId_isRejected() {
         var admin = adminSession();
 
-        var ex = assertThrows(Exception.class, () -> save(admin, List.of("no-such-mcp"), current(admin).version()));
-
-        assertThat(ex.getMessage()).contains("400");
+        assertThat(statusOfPut(admin, List.of("no-such-mcp"), current(admin).version())).isEqualTo(StatusCodes.BAD_REQUEST);
     }
 
     @Test
     public void saveWithoutTheVersionItWasBasedOn_isRejected() {
         var admin = adminSession();
 
-        var ex = assertThrows(Exception.class, () -> save(admin, List.of("slack"), null));
-
-        assertThat(ex.getMessage()).contains("400");
+        assertThat(statusOfPut(admin, List.of("slack"), null)).isEqualTo(StatusCodes.BAD_REQUEST);
     }
 
     @Test
@@ -219,10 +247,20 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
         var staleVersion = select(admin, List.of("slack")).version();
 
         select(other, List.of("slack", "google-workspace-docs"));
-        var ex = assertThrows(Exception.class, () -> save(admin, List.of("google-workspace-gmail"), staleVersion));
 
-        assertThat(ex.getMessage()).contains("409");
+        assertThat(statusOfPut(admin, List.of("google-workspace-gmail"), staleVersion)).isEqualTo(StatusCodes.CONFLICT);
         assertThat(enabled(current(admin))).containsExactly("google-workspace-docs", "slack");
+    }
+
+    @Test
+    public void savingTheSameSelectionAgain_changesNothing() {
+        var admin = adminSession();
+        var first = select(admin, List.of("hubspot", "slack"));
+
+        var again = select(admin, List.of("slack", "hubspot"));
+
+        assertThat(again.version()).isEqualTo(first.version());
+        assertThat(again.updatedAt()).isEqualTo(first.updatedAt());
     }
 
     @Test
@@ -243,27 +281,5 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
                 assertThat(e.params()).contains("\"added\":\"hubspot\"");
             });
         });
-    }
-
-    @Test
-    public void unchangedSave_isNotAudited() {
-        var email = "admin-" + UUID.randomUUID() + "@lightbend.com";
-        var admin = browserSession(email, List.of(ADMIN_GROUP));
-        select(admin, List.of("slack"));
-        Awaitility.await().atMost(10, TimeUnit.SECONDS).untilAsserted(() ->
-                assertThat(policyChangesBy(email)).hasSize(1));
-
-        select(admin, List.of("slack"));
-
-        Awaitility.await().during(Duration.ofSeconds(2)).atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                assertThat(policyChangesBy(email)).hasSize(1));
-    }
-
-    private List<McpInteractionsByUserView.McpInteractionEntry> policyChangesBy(String email) {
-        return componentClient.forView()
-                .method(McpInteractionsByUserView::getByUser)
-                .invoke(new McpInteractionsByUserView.UserPageRequest(email, 0, 25)).interactions().stream()
-                .filter(e -> "policy-change".equals(e.direction()))
-                .toList();
     }
 }

@@ -31,7 +31,7 @@ public class McpWritePolicyEntity extends KeyValueEntity<WritePolicy> {
         if (!current.isBasedOn(command.basedOnVersion())) {
             return effects().reply(new SelectResult(Outcome.STALE, current, previous));
         }
-        if (current.enables(command.enabledMcpIds())) {
+        if (current.sameSelectionAs(command.enabledMcpIds())) {
             return effects().reply(new SelectResult(Outcome.UNCHANGED, current, previous));
         }
         var next = current.select(command.enabledMcpIds(), command.updatedBy(), Instant.now());

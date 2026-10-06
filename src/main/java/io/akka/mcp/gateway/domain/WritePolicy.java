@@ -18,7 +18,7 @@ public record WritePolicy(List<String> enabledMcpIds, long version, String updat
         return this.version == version;
     }
 
-    public boolean enables(List<String> mcpIds) {
+    public boolean sameSelectionAs(List<String> mcpIds) {
         return enabledMcpIds.equals(normalized(mcpIds));
     }
 

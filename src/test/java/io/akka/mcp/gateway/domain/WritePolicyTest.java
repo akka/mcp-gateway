@@ -49,11 +49,11 @@ public class WritePolicyTest {
     }
 
     @Test
-    public void enables_ignoresOrderDuplicatesAndBlanks() {
+    public void sameSelectionAs_ignoresOrderDuplicatesAndBlanks() {
         var policy = WritePolicy.nothingEnabled().select(List.of("slack", "hubspot"), "a@example.com", NOW);
 
-        assertThat(policy.enables(List.of("hubspot", "slack", "slack", " "))).isTrue();
-        assertThat(policy.enables(List.of("slack"))).isFalse();
+        assertThat(policy.sameSelectionAs(List.of("hubspot", "slack", "slack", " "))).isTrue();
+        assertThat(policy.sameSelectionAs(List.of("slack"))).isFalse();
     }
 
     @Test

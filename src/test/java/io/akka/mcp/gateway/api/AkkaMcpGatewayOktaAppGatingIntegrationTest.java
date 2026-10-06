@@ -5,6 +5,8 @@ import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
+import io.akka.mcp.gateway.application.McpWritePolicyEntity;
+import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
 import io.akka.mcp.gateway.domain.UserSession;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,8 @@ public class AkkaMcpGatewayOktaAppGatingIntegrationTest extends TestKitSupport {
         // okta-admin.okta-app-id has no checked-in default; pin it so app-gating is deterministic.
         return TestKit.Settings.DEFAULT.withAdditionalConfig("""
                 okta-admin.okta-app-id = "%s"
+                okta.groups.reader = "mcp-gateway-reader"
+                okta.groups.writer = "mcp-gateway-writer"
                 """.formatted(OKTA_APP_ID));
     }
 
@@ -111,5 +115,31 @@ public class AkkaMcpGatewayOktaAppGatingIntegrationTest extends TestKitSupport {
         // Denied the same way as "no client can handle this tool" — the reader never learns
         // the tool exists behind an unassigned app.
         assertThat(json.path("error").path("message").asText()).contains("No MCP client can handle tool");
+    }
+
+    /** A system the user has no access to must not show a write capability on the dashboard. */
+    @Test
+    public void mcpAccess_doesNotReportWriteForASystemTheUserHasNoAccessTo() {
+        var current = componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
+                .method(McpWritePolicyEntity::get).invoke();
+        componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
+                .method(McpWritePolicyEntity::select)
+                .invoke(new McpWritePolicyEntity.SelectCommand(List.of(MCP_ID), current.version(), "test-setup"));
+        var session = UUID.randomUUID().toString();
+        componentClient.forKeyValueEntity(session)
+                .method(UserSessionEntity::create)
+                .invoke(new UserSessionEntity.CreateCommand(
+                        "writer@lightbend.com", "Writer", Instant.now().plusSeconds(3600),
+                        List.of("mcp-gateway-reader", "mcp-gateway-writer"), "", List.of()));
+
+        var access = httpClient.GET("/mcp/access")
+                .addHeader("Cookie", "SESSION=" + session)
+                .responseBodyAs(AkkaMcpGateway.McpAccessResponse.class)
+                .invoke().body();
+
+        assertThat(access.inaccessible()).anySatisfy(e -> {
+            assertThat(e.mcpId()).isEqualTo(MCP_ID);
+            assertThat(e.writeAllowed()).isFalse();
+        });
     }
 }

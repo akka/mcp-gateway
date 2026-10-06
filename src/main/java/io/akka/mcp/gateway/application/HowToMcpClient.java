@@ -123,7 +123,7 @@ public class HowToMcpClient implements RemoteMcpClient {
 
         var sb = new StringBuilder();
         sb.append("# MCP Gateway — Service Status\n\n");
-        sb.append("All service tools are always visible in this session. ");
+        sb.append("Tools for every service are listed in this session, except write tools: those only appear for a service where an admin has enabled writes and you are in the writer group. ");
         sb.append("Connected services can be called immediately; disconnected ones will return a 'not connected' error until set up.\n\n");
 
         if (!connected.isEmpty()) {
@@ -160,9 +160,11 @@ public class HowToMcpClient implements RemoteMcpClient {
         return """
                 # How to refresh your MCP tool list
 
-                The MCP Gateway always shows tools for **all** available services — even ones you \
+                The MCP Gateway shows tools for **all** available services, even ones you \
                 haven't connected yet. This means you'll see tools like `slack_search_messages` or \
-                `zoho_desk_get_tickets` in the list whether or not you've connected those services.
+                `zoho_desk_get_tickets` in the list whether or not you've connected those services. \
+                Write tools are the exception: they only appear for a service where an admin has \
+                enabled writes, and only if you are in the writer group.
 
                 ## If a tool call fails with "not connected"
 

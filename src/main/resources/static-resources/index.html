@@ -674,7 +674,6 @@
                                 var card = document.querySelector('[data-mcp-id="' + mcpId + '"]');
                                 if (!card) return;
                                 card.classList.add('card-locked');
-                                addAccessBadges(card, mcpId);
                                 var badge = document.createElement('span');
                                 badge.className = 'locked-badge';
                                 badge.textContent = 'No access';

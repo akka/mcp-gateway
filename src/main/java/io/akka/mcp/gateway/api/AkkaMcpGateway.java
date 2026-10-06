@@ -69,17 +69,6 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                 serviceClients));
     }
 
-    /**
-     * MCP JSON-RPC 2.0 dispatcher. Spec: https://modelcontextprotocol.io/specification/2024-11-05
-     *
-     * Incoming request shape:
-     * <pre>
-     * { "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-     *   "params": { "name": "query_accounts", "arguments": { "limit": 10 } } }
-     * </pre>
-     *
-     * Handled methods: initialize, notifications/initialized, tools/list, tools/call, ping
-     */
     /** @param writeAllowed whether the calling user may run write tools on this MCP (see {@link WriteAccess#permits}) */
     public record McpAccessEntry(String mcpId, String mcpName, boolean writeAllowed) {}
     public record McpAccessResponse(List<McpAccessEntry> accessible, List<McpAccessEntry> inaccessible) {}
@@ -95,12 +84,23 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
             var hasAccess = appAssigned(session, client);
             var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName(),
-                    writeAccess.permits(client.getMcpId(), session));
+                    hasAccess && writeAccess.permits(client.getMcpId(), session));
             if (hasAccess) accessible.add(entry); else inaccessible.add(entry);
         }
         return HttpResponses.ok(new McpAccessResponse(accessible, inaccessible));
     }
 
+    /**
+     * MCP JSON-RPC 2.0 dispatcher. Spec: https://modelcontextprotocol.io/specification/2024-11-05
+     *
+     * Incoming request shape:
+     * <pre>
+     * { "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+     *   "params": { "name": "query_accounts", "arguments": { "limit": 10 } } }
+     * </pre>
+     *
+     * Handled methods: initialize, notifications/initialized, tools/list, tools/call, ping
+     */
     @Post("")
     public HttpResponse handleMcp(HttpEntity.Strict rawBody) {
         var session = requireMcpSession();
@@ -343,7 +343,8 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         var toolMeta = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                 .method(McpRegistryEntity::findTool)
                 .invoke(toolName);
-        boolean isWrite = toolMeta
+        boolean isGuidanceOnly = client.getMcpId().equals(HowToMcpClient.MCP_ID);
+        boolean isWrite = !isGuidanceOnly && toolMeta
                 .map(McpConfig.ToolMeta::isWrite)
                 .orElse(true); // unknown → assume write (safe default)
         log.info("MCP tools/call: name={} opType={}", toolName, isWrite ? "write" : "read");
