@@ -162,9 +162,16 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         return responseJson(id, result);
     }
 
+    /**
+     * Lists every tool of every service the user's Okta apps allow, whatever their connection state,
+     * role or the write policy. MCP clients cache this list when they connect and Claude Code ignores
+     * {@code notifications/tools/list_changed}, so anything that can change mid-session must never decide
+     * what is listed: a connect, a role change or an admin enabling writes would otherwise leave clients
+     * with a stale list until they restart. Calls that cannot be made are refused with an explanation
+     * instead (see {@link #handleToolsCall}).
+     */
     private String handleToolsList(Long id, UserSession session) {
         String userId = session.email();
-        var writeAccess = currentWriteAccess();
         log.info("MCP tools/list: aggregating from {} clients", clients.size());
         List<Map<String, Object>> allTools = new ArrayList<>();
 
@@ -195,11 +202,11 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                     pending.put(client, TOOLS_EXECUTOR.submit(() -> client.listTools(userId)));
                 } else {
                     log.info("MCP tools/list: {} disconnected, using registry cache", clientName);
-                    addCachedTools(client.getMcpId(), allTools, session, writeAccess);
+                    addCachedTools(client.getMcpId(), allTools);
                 }
             } catch (Exception e) {
                 log.error("MCP tools/list: could not start fetch for {}: {} — using cache", clientName, e.getMessage(), e);
-                addCachedTools(client.getMcpId(), allTools, session, writeAccess);
+                addCachedTools(client.getMcpId(), allTools);
             }
         }
 
@@ -213,14 +220,14 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                 entry.getValue().cancel(true);
                 log.error("MCP tools/list: live fetch failed/timed out for {}: {} — falling back to cache",
                         clientName, e.getMessage());
-                addCachedTools(client.getMcpId(), allTools, session, writeAccess);
+                addCachedTools(client.getMcpId(), allTools);
                 continue;
             }
             if (entries.isEmpty()) {
                 // Connected but returned nothing (transient upstream hiccup): keep the last-known
                 // cache rather than overwriting it with an empty list.
                 log.warn("MCP tools/list: {} returned 0 live tools — falling back to cache", clientName);
-                addCachedTools(client.getMcpId(), allTools, session, writeAccess);
+                addCachedTools(client.getMcpId(), allTools);
                 continue;
             }
             log.info("MCP tools/list: got {} live tools from {}", entries.size(), clientName);
@@ -232,20 +239,13 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             } catch (Exception e) {
                 log.error("MCP tools/list: failed to cache tools for {}: {}", clientName, e.getMessage());
             }
-            entries.stream()
-                    .filter(e -> listable(client.getMcpId(), e.meta(), session, writeAccess))
-                    .forEach(e -> allTools.add(e.toolSpec()));
+            entries.forEach(e -> allTools.add(e.toolSpec()));
         }
 
         log.info("MCP tools/list: returning {} tools total", allTools.size());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tools", allTools);
         return responseJson(id, result);
-    }
-
-    /** A write tool is only advertised to callers who could actually run it; the registry still holds the full list. */
-    private static boolean listable(String mcpId, McpConfig.ToolMeta meta, UserSession session, WriteAccess writeAccess) {
-        return !meta.isWrite() || writeAccess.permits(mcpId, session);
     }
 
     /** Add tools from a local, in-memory client (the how-to client) without a network fetch. */
@@ -260,16 +260,14 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
     }
 
     /** Best-effort: append a client's last-known cached tools. Never throws. */
-    private void addCachedTools(String mcpId, List<Map<String, Object>> allTools, UserSession session, WriteAccess writeAccess) {
+    private void addCachedTools(String mcpId, List<Map<String, Object>> allTools) {
         try {
             var cached = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                     .method(McpRegistryEntity::findByMcpId)
                     .invoke(mcpId);
             cached.ifPresent(cfg -> {
                 log.info("MCP tools/list: adding {} cached tools for {}", cfg.tools().size(), mcpId);
-                cfg.tools().stream()
-                        .filter(meta -> listable(mcpId, meta, session, writeAccess))
-                        .forEach(meta -> allTools.add(meta.toToolSpec()));
+                cfg.tools().forEach(meta -> allTools.add(meta.toToolSpec()));
             });
         } catch (Exception e) {
             log.error("MCP tools/list: cache lookup failed for {}: {}", mcpId, e.getMessage());

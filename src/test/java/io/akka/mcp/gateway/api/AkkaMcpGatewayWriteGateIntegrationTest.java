@@ -19,8 +19,10 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -35,6 +37,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * servers do, so each test runs the whole path: the tool list the upstream sends, how the gateway
  * classifies it, and whether a call reaches the upstream. Okta stands in for a read-only MCP and
  * Slack for an enabled one.
+ *
+ * The tool list is deliberately the same for everyone (see {@code toolsList_isIdenticalForEveryCaller}).
+ * MCP clients cache it when they connect and cannot be told it changed, so hiding a tool because of a
+ * role, a connection or the write policy would leave clients stale after any of those changes.
  */
 public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
 
@@ -70,14 +76,18 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
     public void enableWritesOnSlackOnly() throws Exception {
         OKTA.forgetCalls();
         SLACK.forgetCalls();
+        enableWritesOn(List.of("slack"));
+        connectSlack(USER_EMAIL);
+        listedTools(USER_EMAIL, List.of(READER_GROUP, WRITER_GROUP));
+    }
+
+    private void enableWritesOn(List<String> mcpIds) {
         var current = componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
                 .method(McpWritePolicyEntity::get)
                 .invoke();
         componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
                 .method(McpWritePolicyEntity::select)
-                .invoke(new McpWritePolicyEntity.SelectCommand(List.of("slack"), current.version(), "test-setup"));
-        connectSlack(USER_EMAIL);
-        listedTools(USER_EMAIL, List.of(READER_GROUP, WRITER_GROUP));
+                .invoke(new McpWritePolicyEntity.SelectCommand(mcpIds, current.version(), "test-setup"));
     }
 
     private void connectSlack(String email) {
@@ -202,34 +212,47 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
         assertThat(SLACK.callsTo("slack_post_message")).isEmpty();
     }
 
-    /** Advertising tools that will always be refused only wastes the model's turns. */
+    /**
+     * Every tool the upstreams advertise is listed for every caller: a writer, a reader, a user with no
+     * role, and a user who has not connected Slack (served from the cache), on read-only and write-enabled
+     * MCPs alike. A call that cannot be made is refused with an explanation instead.
+     */
     @Test
-    public void toolsList_hidesWriteToolsOfAReadOnlyMcp_evenFromWriters() throws Exception {
-        var names = listedTools(USER_EMAIL, List.of(READER_GROUP, WRITER_GROUP));
-
-        assertThat(names).contains("okta_list_users").doesNotContain("okta_create_user");
-    }
-
-    @Test
-    public void toolsList_showsWriteToolsOfAnEnabledMcp_onlyToWriters() throws Exception {
-        var writerView = listedTools(USER_EMAIL, List.of(READER_GROUP, WRITER_GROUP));
-        var readerView = listedTools(USER_EMAIL, List.of(READER_GROUP));
-
-        assertThat(writerView).contains("slack_search_messages", "slack_post_message");
-        assertThat(readerView).contains("slack_search_messages").doesNotContain("slack_post_message");
-    }
-
-    /** A user who has not connected Slack is served the cached tool list, which must be filtered the same way. */
-    @Test
-    public void toolsList_filtersTheCachedListToo() throws Exception {
+    public void toolsList_isIdenticalForEveryCaller() throws Exception {
+        var everyTool = List.of("okta_list_users", "okta_create_user", "slack_search_messages", "slack_post_message");
         var notConnected = "no-slack-" + UUID.randomUUID() + "@lightbend.com";
 
-        var writerView = listedTools(notConnected, List.of(READER_GROUP, WRITER_GROUP));
-        var readerView = listedTools(notConnected, List.of(READER_GROUP));
+        var writer = new HashSet<>(listedTools(USER_EMAIL, List.of(READER_GROUP, WRITER_GROUP)));
+        var reader = new HashSet<>(listedTools(USER_EMAIL, List.of(READER_GROUP)));
+        var noRole = new HashSet<>(listedTools(USER_EMAIL, List.of()));
+        var writerNotConnected = new HashSet<>(listedTools(notConnected, List.of(READER_GROUP, WRITER_GROUP)));
+        var readerNotConnected = new HashSet<>(listedTools(notConnected, List.of(READER_GROUP)));
 
-        assertThat(writerView).contains("slack_post_message");
-        assertThat(readerView).contains("slack_search_messages").doesNotContain("slack_post_message");
-        assertThat(writerView).doesNotContain("okta_create_user");
+        assertThat(writer).containsAll(everyTool);
+        assertThat(reader).isEqualTo(writer);
+        assertThat(noRole).isEqualTo(writer);
+        assertThat(writerNotConnected).isEqualTo(writer);
+        assertThat(readerNotConnected).isEqualTo(writer);
+    }
+
+    /**
+     * An admin changing the write policy must not leave clients holding a stale list, whether the list
+     * is fetched live (Slack connected) or served from the cache (Slack not connected).
+     */
+    @Test
+    public void toolsList_doesNotChangeWhenTheWritePolicyChanges() throws Exception {
+        var writerGroups = List.of(READER_GROUP, WRITER_GROUP);
+        var notConnected = "no-slack-" + UUID.randomUUID() + "@lightbend.com";
+        var listsSeen = new ArrayList<Set<String>>();
+
+        for (var policy : List.of(List.<String>of(), List.of("slack", "okta-admin"), List.of("slack"))) {
+            enableWritesOn(policy);
+            listsSeen.add(new HashSet<>(listedTools(USER_EMAIL, writerGroups)));
+            listsSeen.add(new HashSet<>(listedTools(notConnected, writerGroups)));
+        }
+
+        assertThat(listsSeen.get(0)).contains("slack_post_message", "okta_create_user");
+        assertThat(listsSeen).allSatisfy(seen -> assertThat(seen).isEqualTo(listsSeen.get(0)));
     }
 
     /** The dashboard badge must not promise writes the signed-in user cannot perform. */

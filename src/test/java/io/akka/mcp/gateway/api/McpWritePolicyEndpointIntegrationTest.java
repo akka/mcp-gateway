@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -193,19 +194,20 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
         assertThat(enabled(current(admin))).containsExactly("google-workspace-gmail");
     }
 
+    /** Clients cache the tool list and cannot be told it changed, so a saved change must not alter it. */
     @Test
-    public void savedSelection_takesEffectImmediately_inTheToolList() throws Exception {
+    public void savingASelection_leavesTheToolListUnchanged() throws Exception {
         var admin = adminSession();
         connectSlack();
         seedCachedWriteTool("google-workspace-gmail", "Gmail", "Workspace_Gmail_create_draft");
 
         select(admin, List.of("google-workspace-gmail"));
-        var gmailOnly = listedTools();
+        var gmailOnly = new HashSet<>(listedTools());
         select(admin, List.of("slack"));
-        var slackOnly = listedTools();
+        var slackOnly = new HashSet<>(listedTools());
 
-        assertThat(gmailOnly).contains("Workspace_Gmail_create_draft").doesNotContain("slack_post_message");
-        assertThat(slackOnly).contains("slack_post_message").doesNotContain("Workspace_Gmail_create_draft");
+        assertThat(gmailOnly).contains("Workspace_Gmail_create_draft", "slack_post_message");
+        assertThat(slackOnly).isEqualTo(gmailOnly);
     }
 
     @Test

@@ -181,11 +181,19 @@ Being assigned the Google application enables the whole Google Workspace card at
 
 ### Systems decide whether writes are possible
 
-Being in the writer group is necessary but not sufficient. A system must also have writes enabled; every other system is read-only for everyone, writers included. A write tool on a read-only system is refused, and it is not shown in the tool list. The dashboard marks each system **Read-only** or **Read** and **Write** for you specifically, so a reader never sees a **Write** badge.
+Being in the writer group is necessary but not sufficient. A system must also have writes enabled; every other system is read-only for everyone, writers included. A write tool on a read-only system is refused with a message that says so, but it still appears in the tool list (see [Every tool is always listed](#every-tool-is-always-listed)). The dashboard marks each system **Read-only** or **Read** and **Write** for you specifically, so a reader never sees a **Write** badge.
 
 Admins choose the enabled systems on the **Write access** page (admin menu on the dashboard). A change is applied by the gateway immediately: disabling a system stops writes on it for everyone, and enabling one lets users in the writer group use it straight away, except where signing in has to request the write permission (today only Slack, see below). It is recorded in the Interactions log as a `policy-change` entry with who changed what, so it can be reviewed and flagged like any other entry. Nothing is enabled until an admin saves a selection, so a new deployment is read-only everywhere. If the saved selection cannot be read, the gateway refuses all writes.
 
 Enabling a system is a deliberate decision: review the OAuth scopes users grant and the tools the downstream server exposes first. Where a system's sign-in requests write permissions (today only Slack's `chat:write`), they are requested only from users who are in the writer group, so each writer must disconnect and reconnect that system after it is enabled, or after they gain the writer role. Turning writes off does not revoke tokens people already hold; it only stops the gateway from using them.
+
+### Every tool is always listed
+
+The tool list your assistant sees does not depend on whether you have connected a system, on your role, or on which systems have writes enabled. A tool you cannot use yet is still listed, and calling it returns a message that says why: the system is not connected, or it is read-only through the gateway, or writing needs the writer group.
+
+This is deliberate. AI assistants fetch the tool list once, when they connect, and the main ones ignore the protocol's "tool list changed" notification, so a list that changed mid-session would leave them stale until the user restarted them. Connecting a system, getting the writer role, or an admin enabling writes would each need a restart before the tools appeared. Keeping the list constant avoids that. The one thing that does shape the list is which Okta applications are assigned to you, which is fixed when you sign in.
+
+The tests in `AkkaMcpGatewayWriteGateIntegrationTest` pin this behaviour.
 
 ### Connecting is still per-person
 
