@@ -133,7 +133,13 @@
             var summary = [];
             if (added.length) summary.push('Enable writes on: ' + added.join(', '));
             if (removed.length) summary.push('Disable writes on: ' + removed.join(', '));
-            if (!confirm(summary.join('\n') + '\n\nThis takes effect immediately for all users. Continue?')) return;
+            var effect = [];
+            if (added.length) {
+                effect.push('Users in the writer group can use the systems you enable straight away' +
+                    (added.indexOf('slack') >= 0 ? ', except Slack posting, which each writer can only use after reconnecting Slack.' : '.'));
+            }
+            if (removed.length) effect.push('Writes on the systems you disable stop for everyone straight away.');
+            if (!confirm(summary.join('\n') + '\n\n' + effect.join('\n') + '\n\nContinue?')) return;
 
             var btn = document.getElementById('btn-save');
             btn.disabled = true;
