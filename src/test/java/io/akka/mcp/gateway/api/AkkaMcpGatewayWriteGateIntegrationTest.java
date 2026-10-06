@@ -4,19 +4,15 @@ import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpInteractionsByUserView;
-import io.akka.mcp.gateway.application.McpWritePolicyEntity;
-import io.akka.mcp.gateway.application.SlackConnectionEntity;
-import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer.AdvertisedTool;
+import io.akka.mcp.gateway.testsupport.GatewayFixtures;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -82,32 +78,16 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
     }
 
     private void enableWritesOn(List<String> mcpIds) {
-        var current = componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
-                .method(McpWritePolicyEntity::get)
-                .invoke();
-        componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
-                .method(McpWritePolicyEntity::select)
-                .invoke(new McpWritePolicyEntity.SelectCommand(mcpIds, current.version(), "test-setup"));
+        GatewayFixtures.enableWritesOn(componentClient, mcpIds);
     }
 
     private void connectSlack(String email) {
-        componentClient.forKeyValueEntity(email)
-                .method(SlackConnectionEntity::initiatePkceOAuth)
-                .invoke(new SlackConnectionEntity.InitiateCommand("state-1", "verifier-1", "client-id"));
-        componentClient.forKeyValueEntity(email)
-                .method(SlackConnectionEntity::storeToken)
-                .invoke(new SlackConnectionEntity.StoreTokenCommand(
-                        "slack-access", "slack-refresh", Instant.now().plusSeconds(3600), "state-1"));
+        GatewayFixtures.connectSlack(componentClient, email);
     }
 
     /** An MCP client's Bearer token, what {@code POST /mcp} accepts. */
     private String createMcpToken(String email, List<String> groups) {
-        var token = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(token)
-                .method(McpAccessTokenEntity::create)
-                .invoke(new McpAccessTokenEntity.CreateCommand(
-                        email, "User", groups, List.of(), "client-1", Instant.now().plusSeconds(3600)));
-        return token;
+        return GatewayFixtures.mcpToken(componentClient, email, groups);
     }
 
     private JsonNode rpc(String email, List<String> groups, Map<String, Object> request) throws Exception {
@@ -266,11 +246,7 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
     }
 
     private Map<String, Boolean> writeAllowedById(List<String> groups) {
-        var session = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(session)
-                .method(UserSessionEntity::create)
-                .invoke(new UserSessionEntity.CreateCommand(
-                        USER_EMAIL, "User", Instant.now().plusSeconds(3600), groups, "", List.of()));
+        var session = GatewayFixtures.browserSession(componentClient, USER_EMAIL, groups);
         var access = httpClient.GET("/mcp/access")
                 .addHeader("Cookie", "SESSION=" + session)
                 .responseBodyAs(AkkaMcpGateway.McpAccessResponse.class)
@@ -283,14 +259,16 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
 
     /** The how-to tools are guidance, not a downstream system, so the write gate must never apply to them. */
     @Test
-    public void howToTools_areAvailableToWritersAndReaders_butNotToUsersWithNoRole() throws Exception {
+    public void howToTools_areAvailableToAnyoneWithARole_butNotToUsersWithNoRole() throws Exception {
         var writer = callTool("howto_get_started", List.of(READER_GROUP, WRITER_GROUP));
         var reader = callTool("howto_get_started", List.of(READER_GROUP));
         var refresh = callTool("howto_refresh_tools", List.of(READER_GROUP));
+        var writerOnly = callTool("howto_get_started", List.of(WRITER_GROUP));
         var noRole = callTool("howto_get_started", List.of());
 
         assertThat(succeeded(writer)).isTrue();
         assertThat(succeeded(reader)).isTrue();
+        assertThat(succeeded(writerOnly)).isTrue();
         assertThat(succeeded(refresh)).isTrue();
         assertThat(noRole.has("error")).isTrue();
     }

@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -86,6 +87,10 @@ public class McpWritePolicyEndpoint extends AbstractProtectedEndpoint {
         if (denied != null) return denied;
         if (request == null || request.enabledMcpIds() == null || request.basedOnVersion() == null) {
             return HttpResponses.badRequest("enabledMcpIds and basedOnVersion are required");
+        }
+
+        if (request.enabledMcpIds().stream().anyMatch(Objects::isNull)) {
+            return HttpResponses.badRequest("enabledMcpIds must not contain null");
         }
 
         var known = connectors.stream().map(RemoteMcpClient::getMcpId).collect(Collectors.toSet());

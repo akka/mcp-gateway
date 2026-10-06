@@ -21,9 +21,9 @@ public class WritePolicyTest {
     }
 
     @Test
-    public void select_tidiesTheIdsAndRecordsWhoAndWhen() {
+    public void select_sortsAndDeduplicatesTheIdsAndRecordsWhoAndWhen() {
         var policy = WritePolicy.nothingEnabled()
-                .select(List.of("slack", " google-workspace-gmail ", "slack", ""), "admin@example.com", NOW);
+                .select(List.of("slack", "google-workspace-gmail", "slack"), "admin@example.com", NOW);
 
         assertThat(policy.enabledMcpIds()).containsExactly("google-workspace-gmail", "slack");
         assertThat(policy.updatedBy()).isEqualTo("admin@example.com");
@@ -49,10 +49,10 @@ public class WritePolicyTest {
     }
 
     @Test
-    public void sameSelectionAs_ignoresOrderDuplicatesAndBlanks() {
+    public void sameSelectionAs_ignoresOrderAndDuplicates() {
         var policy = WritePolicy.nothingEnabled().select(List.of("slack", "hubspot"), "a@example.com", NOW);
 
-        assertThat(policy.sameSelectionAs(List.of("hubspot", "slack", "slack", " "))).isTrue();
+        assertThat(policy.sameSelectionAs(List.of("hubspot", "slack", "slack"))).isTrue();
         assertThat(policy.sameSelectionAs(List.of("slack"))).isFalse();
     }
 

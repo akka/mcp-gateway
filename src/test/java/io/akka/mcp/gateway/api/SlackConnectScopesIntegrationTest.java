@@ -3,14 +3,12 @@ package io.akka.mcp.gateway.api;
 import akka.http.javadsl.model.StatusCodes;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
-import io.akka.mcp.gateway.application.McpWritePolicyEntity;
-import io.akka.mcp.gateway.application.UserSessionEntity;
+import io.akka.mcp.gateway.testsupport.GatewayFixtures;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -38,21 +36,11 @@ public class SlackConnectScopesIntegrationTest extends TestKitSupport {
     }
 
     private void enableWritesOn(List<String> mcpIds) {
-        var current = componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
-                .method(McpWritePolicyEntity::get)
-                .invoke();
-        componentClient.forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
-                .method(McpWritePolicyEntity::select)
-                .invoke(new McpWritePolicyEntity.SelectCommand(mcpIds, current.version(), "test-setup"));
+        GatewayFixtures.enableWritesOn(componentClient, mcpIds);
     }
 
     private List<String> scopesRequestedBy(List<String> groups) {
-        var session = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(session)
-                .method(UserSessionEntity::create)
-                .invoke(new UserSessionEntity.CreateCommand(
-                        "user-" + UUID.randomUUID() + "@lightbend.com", "User",
-                        Instant.now().plusSeconds(3600), groups, "", List.of()));
+        var session = GatewayFixtures.browserSession(componentClient, "user-" + UUID.randomUUID() + "@lightbend.com", groups);
 
         var response = httpClient.GET("/slack/oauth/connect")
                 .addHeader("Cookie", "SESSION=" + session)

@@ -39,6 +39,12 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
     private static final Logger log = LoggerFactory.getLogger(SlackMcpEndpoint.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    private final String slackApiBaseUrl;
+
+    public SlackMcpEndpoint(Config config) {
+        this.slackApiBaseUrl = config.getString("slack.api-base-url");
+    }
+
     @Post("")
     public HttpResponse handle(HttpEntity.Strict rawBody) {
 
@@ -132,9 +138,6 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                         param("page", "integer", "Page number (default 1)")),
                 List.of("query")));
 
-        // Only write tool today. Uses the explicit write-tool helper so its annotations carry
-        // readOnlyHint:false — the gateway's write classifier (McpConfig.ToolMeta.isWrite) keys
-        // off that hint to route the call through its connector/role write gate.
         tools.add(writeTool("slack_post_message",
                 "Post a message to a Slack channel, DM, or thread. Requires the chat:write scope; "
                         + "if the user connected before this scope was requested they need to reconnect.",
@@ -163,7 +166,7 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
         }
 
         log.info("tools/call: {}", toolName);
-        var slack = new SlackApiClient(token);
+        var slack = new SlackApiClient(token, slackApiBaseUrl);
 
         try {
             String text = switch (toolName) {

@@ -55,7 +55,7 @@
 
     <div class="notice">
         <p>A user can write on a system only if it is enabled here <strong>and</strong> they are in the writer group. Every other system is read-only for everyone.</p>
-        <p>Where a system's sign-in requests write permissions (today Slack posting), each writer must disconnect and reconnect that system after you enable it. Turning writes off does not revoke tokens people already hold, it only stops the gateway from using them.</p>
+        <p>Slack posting needs each writer to disconnect and reconnect Slack after you enable it, because Slack's sign-in only asks writers for the posting permission. Other systems already ask every user for their permissions, so enabling them needs no reconnect. Turning writes off does not revoke tokens people already hold, it only stops the gateway from using them.</p>
         <p>Every change is recorded in the Interactions log.</p>
     </div>
     <div id="writer-warning" class="warn" style="display:none">No writer group is configured, so nobody can write regardless of this selection.</div>

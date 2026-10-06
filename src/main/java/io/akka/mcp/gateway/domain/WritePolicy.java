@@ -36,8 +36,6 @@ public record WritePolicy(List<String> enabledMcpIds, long version, String updat
 
     private static List<String> normalized(List<String> mcpIds) {
         return mcpIds.stream()
-                .map(String::trim)
-                .filter(id -> !id.isEmpty())
                 .distinct()
                 .sorted()
                 .toList();

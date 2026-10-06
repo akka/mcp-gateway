@@ -28,7 +28,7 @@ public class SlackApiClient {
         this(token, DEFAULT_BASE);
     }
 
-    SlackApiClient(String token, String base) {
+    public SlackApiClient(String token, String base) {
         this.token = token;
         this.base = base;
     }
@@ -88,9 +88,9 @@ public class SlackApiClient {
             return callPost(base + "chat.postMessage", MAPPER.writeValueAsString(body));
         } catch (SlackApiException e) {
             if (MISSING_SCOPE.equals(e.slackError())) {
-                throw new SlackApiException(MISSING_SCOPE
-                        + ": your Slack connection cannot post messages yet. Disconnect and reconnect Slack on the "
-                        + "gateway dashboard to grant posting (this also needs the gateway writer role).");
+                throw new SlackApiException(MISSING_SCOPE,
+                        "Your Slack connection cannot post messages yet. Disconnect and reconnect Slack on the "
+                                + "gateway dashboard to grant posting (this also needs the gateway writer role).");
             }
             throw e;
         }
@@ -143,10 +143,14 @@ public class SlackApiClient {
         private final String slackError;
 
         public SlackApiException(String slackError) {
-            super("Slack API error: " + slackError);
+            this(slackError, null);
+        }
+
+        public SlackApiException(String slackError, String guidance) {
+            super("Slack API error: " + slackError + (guidance == null ? "" : ". " + guidance));
             this.slackError = slackError;
         }
 
-        String slackError() { return slackError; }
+        public String slackError() { return slackError; }
     }
 }

@@ -6,20 +6,18 @@ import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
-import io.akka.mcp.gateway.application.SlackConnectionEntity;
-import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer.AdvertisedTool;
+import io.akka.mcp.gateway.testsupport.GatewayFixtures;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -61,12 +59,7 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
     }
 
     private String browserSession(String email, List<String> groups) {
-        var token = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(token)
-                .method(UserSessionEntity::create)
-                .invoke(new UserSessionEntity.CreateCommand(
-                        email, "User", Instant.now().plusSeconds(3600), groups, "", List.of()));
-        return token;
+        return GatewayFixtures.browserSession(componentClient, email, groups);
     }
 
     private String adminSession() {
@@ -74,22 +67,11 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
     }
 
     private String mcpToken(List<String> groups) {
-        var token = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(token)
-                .method(McpAccessTokenEntity::create)
-                .invoke(new McpAccessTokenEntity.CreateCommand(
-                        USER_EMAIL, "User", groups, List.of(), "client-1", Instant.now().plusSeconds(3600)));
-        return token;
+        return GatewayFixtures.mcpToken(componentClient, USER_EMAIL, groups);
     }
 
     private void connectSlack() {
-        componentClient.forKeyValueEntity(USER_EMAIL)
-                .method(SlackConnectionEntity::initiatePkceOAuth)
-                .invoke(new SlackConnectionEntity.InitiateCommand("state-1", "verifier-1", "client-id"));
-        componentClient.forKeyValueEntity(USER_EMAIL)
-                .method(SlackConnectionEntity::storeToken)
-                .invoke(new SlackConnectionEntity.StoreTokenCommand(
-                        "slack-access", "slack-refresh", Instant.now().plusSeconds(3600), "state-1"));
+        GatewayFixtures.connectSlack(componentClient, USER_EMAIL);
     }
 
     private McpWritePolicyEndpoint.WritePolicyResponse current(String cookie) {
@@ -236,6 +218,15 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
+    public void aNullIdInTheSelection_isRejected_evenAlongsideAnUnknownId() {
+        var admin = adminSession();
+        var version = current(admin).version();
+
+        assertThat(statusOfPut(admin, Arrays.asList("slack", null), version)).isEqualTo(StatusCodes.BAD_REQUEST);
+        assertThat(statusOfPut(admin, Arrays.asList("no-such-mcp", null), version)).isEqualTo(StatusCodes.BAD_REQUEST);
+    }
+
+    @Test
     public void saveWithoutTheVersionItWasBasedOn_isRejected() {
         var admin = adminSession();
 
@@ -280,8 +271,16 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
             assertThat(entries).anySatisfy(e -> {
                 assertThat(e.direction()).isEqualTo("policy-change");
                 assertThat(e.tool()).isEqualTo("write-policy");
-                assertThat(e.params()).contains("\"added\":\"hubspot\"");
+                assertThat(parsed(e.params()).path("added").asText()).isEqualTo("hubspot");
             });
         });
+    }
+
+    private static JsonNode parsed(String json) {
+        try {
+            return JsonSupport.getObjectMapper().readTree(json);
+        } catch (Exception e) {
+            throw new AssertionError("not valid JSON: " + json, e);
+        }
     }
 }

@@ -168,7 +168,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
      * {@code notifications/tools/list_changed}, so anything that can change mid-session must never decide
      * what is listed: a connect, a role change or an admin enabling writes would otherwise leave clients
      * with a stale list until they restart. Calls that cannot be made are refused with an explanation
-     * instead (see {@link #handleToolsCall}).
+     * instead (see {@link #handleToolsCall}). A service nobody has connected yet has nothing cached to list.
      */
     private String handleToolsList(Long id, UserSession session) {
         String userId = session.email();
@@ -376,7 +376,9 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
 
         boolean isRead = !isWrite;
         String label = isRead ? "Read": "Write";
-        boolean canInteract = session.canInteract(isWrite, readerGroup, writerGroup);
+        boolean canInteract = isGuidanceOnly
+                ? session.canRead(readerGroup) || session.canWrite(writerGroup)
+                : session.canInteract(isWrite, readerGroup, writerGroup);
         if (!canInteract) {
             log.warn("MCP tools/call: {} access rejected for user {}: {}, read={}, write={}", label, userEmail, toolName, session.canRead(readerGroup), session.canWrite(writerGroup));
             componentClient

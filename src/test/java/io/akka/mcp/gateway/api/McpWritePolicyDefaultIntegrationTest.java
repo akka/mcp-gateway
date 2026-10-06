@@ -3,20 +3,18 @@ package io.akka.mcp.gateway.api;
 import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
-import io.akka.mcp.gateway.application.McpAccessTokenEntity;
-import io.akka.mcp.gateway.application.McpRegistryEntity;
-import io.akka.mcp.gateway.application.SlackConnectionEntity;
-import io.akka.mcp.gateway.application.UserSessionEntity;
-import io.akka.mcp.gateway.domain.McpConfig;
+import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer.AdvertisedTool;
+import io.akka.mcp.gateway.testsupport.GatewayFixtures;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,7 +27,6 @@ public class McpWritePolicyDefaultIntegrationTest extends TestKitSupport {
     private static final String ADMIN_GROUP = "mcp-gateway-admin";
     private static final String READER_GROUP = "mcp-gateway-reader";
     private static final String WRITER_GROUP = "mcp-gateway-writer";
-    private static final String EMAIL = "user@lightbend.com";
 
     private static final FakeMcpServer SLACK = FakeMcpServer.start().advertising(new AdvertisedTool("slack_post_message", false));
 
@@ -48,19 +45,12 @@ public class McpWritePolicyDefaultIntegrationTest extends TestKitSupport {
                 """.formatted(SLACK.url(), ADMIN_GROUP, READER_GROUP, WRITER_GROUP));
     }
 
-    private String browserSession(List<String> groups) {
-        var token = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(token)
-                .method(UserSessionEntity::create)
-                .invoke(new UserSessionEntity.CreateCommand(
-                        EMAIL, "User", Instant.now().plusSeconds(3600), groups, "", List.of()));
-        return token;
-    }
-
     @Test
     public void beforeAnyoneSavesAnything_noConnectorHasWritesEnabled() {
+        var admin = GatewayFixtures.browserSession(componentClient, "admin@lightbend.com", List.of(ADMIN_GROUP));
+
         var data = httpClient.GET("/admin/write-access/data")
-                .addHeader("Cookie", "SESSION=" + browserSession(List.of(ADMIN_GROUP)))
+                .addHeader("Cookie", "SESSION=" + admin)
                 .responseBodyAs(McpWritePolicyEndpoint.WritePolicyResponse.class)
                 .invoke().body();
 
@@ -69,27 +59,22 @@ public class McpWritePolicyDefaultIntegrationTest extends TestKitSupport {
         assertThat(data.updatedBy()).isNull();
     }
 
+    /**
+     * The Slack connection is real and the tool is classified as a write, so the refusal can only be
+     * the gate: the audit record the gate writes is the positive control for that.
+     */
     @Test
     public void beforeAnyoneSavesAnything_aWriterCannotWriteAnywhere() throws Exception {
-        var mcpToken = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(mcpToken)
-                .method(McpAccessTokenEntity::create)
-                .invoke(new McpAccessTokenEntity.CreateCommand(
-                        EMAIL, "User", List.of(READER_GROUP, WRITER_GROUP), List.of(), "client-1", Instant.now().plusSeconds(3600)));
-        componentClient.forKeyValueEntity(EMAIL)
-                .method(SlackConnectionEntity::initiatePkceOAuth)
-                .invoke(new SlackConnectionEntity.InitiateCommand("state-1", "verifier-1", "client-id"));
-        componentClient.forKeyValueEntity(EMAIL)
-                .method(SlackConnectionEntity::storeToken)
-                .invoke(new SlackConnectionEntity.StoreTokenCommand(
-                        "slack-access", "slack-refresh", Instant.now().plusSeconds(3600), "state-1"));
-        componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
-                .method(McpRegistryEntity::register)
-                .invoke(new McpConfig("slack", "Slack", List.of(new McpConfig.ToolMeta(
-                        "slack_post_message", "seeded", Map.of("type", "object", "properties", Map.of()), false, false))));
+        var email = "writer-" + UUID.randomUUID() + "@lightbend.com";
+        GatewayFixtures.connectSlack(componentClient, email);
+        var token = GatewayFixtures.mcpToken(componentClient, email, List.of(READER_GROUP, WRITER_GROUP));
+        // Warm the registry from the live tool list so the tool is known to be a write.
+        httpClient.POST("/mcp").addHeader("Authorization", "Bearer " + token)
+                .withRequestBody(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list"))
+                .responseBodyAs(String.class).invoke();
 
         var response = httpClient.POST("/mcp")
-                .addHeader("Authorization", "Bearer " + mcpToken)
+                .addHeader("Authorization", "Bearer " + token)
                 .withRequestBody(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
                         "params", Map.of("name", "slack_post_message", "arguments", Map.of())))
                 .responseBodyAs(String.class)
@@ -98,5 +83,13 @@ public class McpWritePolicyDefaultIntegrationTest extends TestKitSupport {
         var result = JsonSupport.getObjectMapper().readTree(response.body()).path("result");
         assertThat(result.path("isError").asBoolean(false)).isTrue();
         assertThat(SLACK.callsTo("slack_post_message")).isEmpty();
+        Awaitility.await().atMost(10, TimeUnit.SECONDS).untilAsserted(() ->
+                assertThat(componentClient.forView()
+                        .method(McpInteractionsByUserView::getByUser)
+                        .invoke(new McpInteractionsByUserView.UserPageRequest(email, 0, 25)).interactions())
+                        .anySatisfy(e -> {
+                            assertThat(e.direction()).isEqualTo("write-rejected");
+                            assertThat(e.mcpId()).isEqualTo("slack");
+                        }));
     }
 }

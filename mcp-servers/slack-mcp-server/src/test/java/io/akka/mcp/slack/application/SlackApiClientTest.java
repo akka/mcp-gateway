@@ -1,63 +1,36 @@
 package io.akka.mcp.slack.application;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpServer;
-import org.junit.jupiter.api.AfterEach;
+import io.akka.mcp.slack.testsupport.FakeSlackApi;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class SlackApiClientTest {
 
-    private record Received(String method, String path, String authorization, String contentType, JsonNode body) {}
+    private static final FakeSlackApi SLACK = FakeSlackApi.start();
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    private HttpServer slack;
-    private final AtomicReference<Received> received = new AtomicReference<>();
-    private volatile String slackReply = "{\"ok\":true,\"ts\":\"1700000000.000100\"}";
-
-    @BeforeEach
-    public void startFakeSlack() throws Exception {
-        slack = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        slack.createContext("/", exchange -> {
-            var raw = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            received.set(new Received(
-                    exchange.getRequestMethod(),
-                    exchange.getRequestURI().getPath(),
-                    exchange.getRequestHeaders().getFirst("Authorization"),
-                    exchange.getRequestHeaders().getFirst("Content-Type"),
-                    raw.isEmpty() ? null : MAPPER.readTree(raw)));
-            var reply = slackReply.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, reply.length);
-            exchange.getResponseBody().write(reply);
-            exchange.close();
-        });
-        slack.start();
+    @AfterAll
+    public static void stopFakeSlack() {
+        SLACK.close();
     }
 
-    @AfterEach
-    public void stopFakeSlack() {
-        slack.stop(0);
+    @BeforeEach
+    public void resetFakeSlack() {
+        SLACK.reset();
     }
 
     private SlackApiClient client() {
-        return new SlackApiClient("xoxp-user-token", "http://127.0.0.1:" + slack.getAddress().getPort() + "/");
+        return new SlackApiClient("xoxp-user-token", SLACK.url());
     }
 
     @Test
     public void postMessage_postsJsonToChatPostMessageAsTheUser() throws Exception {
         var reply = client().postMessage("C12345", "hello team", "1699999999.000200");
 
-        var request = received.get();
+        var request = SLACK.onlyRequest();
         assertThat(request.method()).isEqualTo("POST");
         assertThat(request.path()).isEqualTo("/chat.postMessage");
         assertThat(request.authorization()).isEqualTo("Bearer xoxp-user-token");
@@ -71,36 +44,38 @@ public class SlackApiClientTest {
     @Test
     public void postMessage_withoutAThread_postsATopLevelMessage() throws Exception {
         client().postMessage("C12345", "hello team", null);
-        assertThat(received.get().body().has("thread_ts")).isFalse();
-
         client().postMessage("C12345", "hello team", "  ");
-        assertThat(received.get().body().has("thread_ts")).isFalse();
+
+        assertThat(SLACK.requests()).hasSize(2).allSatisfy(r -> assertThat(r.body().has("thread_ts")).isFalse());
     }
 
     @Test
-    public void postMessage_whenTheTokenLacksChatWrite_tellsTheUserHowToFixIt() {
-        slackReply = "{\"ok\":false,\"error\":\"missing_scope\"}";
+    public void postMessage_whenTheTokenLacksChatWrite_reportsTheSlackErrorCodeWithGuidance() {
+        SLACK.replyingWith("{\"ok\":false,\"error\":\"missing_scope\"}");
 
         assertThatThrownBy(() -> client().postMessage("C12345", "hi", null))
-                .isInstanceOf(SlackApiClient.SlackApiException.class)
-                .hasMessageContaining("missing_scope")
-                .hasMessageContaining("reconnect");
+                .isInstanceOfSatisfying(SlackApiClient.SlackApiException.class, e -> {
+                    assertThat(e.slackError()).isEqualTo("missing_scope");
+                    assertThat(e.getMessage()).isNotEqualTo("Slack API error: missing_scope");
+                });
     }
 
     @Test
-    public void postMessage_passesOtherSlackErrorsThroughUnchanged() {
-        slackReply = "{\"ok\":false,\"error\":\"channel_not_found\"}";
+    public void postMessage_passesOtherSlackErrorsThroughWithoutGuidance() {
+        SLACK.replyingWith("{\"ok\":false,\"error\":\"channel_not_found\"}");
 
         assertThatThrownBy(() -> client().postMessage("C0000", "hi", null))
-                .isInstanceOf(SlackApiClient.SlackApiException.class)
-                .hasMessageContaining("channel_not_found");
+                .isInstanceOfSatisfying(SlackApiClient.SlackApiException.class, e -> {
+                    assertThat(e.slackError()).isEqualTo("channel_not_found");
+                    assertThat(e.getMessage()).isEqualTo("Slack API error: channel_not_found");
+                });
     }
 
     @Test
     public void reads_stillUseGetAgainstTheSameBase() throws Exception {
         client().userInfo("U123");
 
-        var request = received.get();
+        var request = SLACK.onlyRequest();
         assertThat(request.method()).isEqualTo("GET");
         assertThat(request.path()).isEqualTo("/users.info");
     }

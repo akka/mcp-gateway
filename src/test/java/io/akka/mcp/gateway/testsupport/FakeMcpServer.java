@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
@@ -27,6 +28,7 @@ public final class FakeMcpServer implements AutoCloseable {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final HttpServer server;
+    private final ExecutorService executor = Executors.newCachedThreadPool();
     private final List<ReceivedCall> calls = new CopyOnWriteArrayList<>();
     private volatile List<AdvertisedTool> tools = List.of();
 
@@ -39,7 +41,7 @@ public final class FakeMcpServer implements AutoCloseable {
             var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             var fake = new FakeMcpServer(server);
             server.createContext("/mcp", fake::handle);
-            server.setExecutor(Executors.newCachedThreadPool());
+            server.setExecutor(fake.executor);
             server.start();
             return fake;
         } catch (IOException e) {
@@ -67,6 +69,7 @@ public final class FakeMcpServer implements AutoCloseable {
     @Override
     public void close() {
         server.stop(0);
+        executor.shutdownNow();
     }
 
     private void handle(HttpExchange exchange) throws IOException {

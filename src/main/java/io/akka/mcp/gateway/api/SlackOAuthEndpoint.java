@@ -71,9 +71,11 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     // inject user_scope via extra params so users only access their own data.
     //
     // chat:write is requested only for users the gateway would let post (write-enabled connector
-    // and writer group), so a reader's Slack token never carries it. Scopes are fixed at connect
-    // time: a user who gains the writer role, or connected before chat:write was added, must
-    // disconnect and reconnect before slack_post_message works.
+    // and writer group). The redirect is not signed and the callback does not check what Slack
+    // granted, so this limits what we ask for, not what a user can obtain: the write gate is what
+    // stops a reader posting. Scopes are fixed at connect time: a user who gains the writer role,
+    // or connected before chat:write was added, must disconnect and reconnect before
+    // slack_post_message works.
     @Override
     protected String getScope() { return ""; }
 
