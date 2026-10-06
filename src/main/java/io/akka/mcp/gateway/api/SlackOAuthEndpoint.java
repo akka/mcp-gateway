@@ -9,8 +9,12 @@ import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
 import io.akka.mcp.gateway.application.SlackConnectionEntity;
 import io.akka.mcp.gateway.application.SlackMcpClient;
+import io.akka.mcp.gateway.domain.UserSession;
+import io.akka.mcp.gateway.domain.WriteAccess;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 @HttpEndpoint("/slack/oauth")
@@ -53,28 +57,35 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     @Override protected String getTokenEndpoint() { return SLACK_TOKEN_ENDPOINT; }
     @Override protected String getProviderLabel() { return "Slack"; }
 
-    // Slack OAuth v2 uses user_scope (not scope) for user tokens — pass empty bot scope
-    // and inject user_scope via extra params so users only access their own data.
+    private static final List<String> READ_USER_SCOPES = List.of(
+            "channels:read", "channels:history",
+            "groups:read", "groups:history",
+            "im:read", "im:history",
+            "mpim:read", "mpim:history",
+            "files:read",
+            "users:read", "users:read.email",
+            "search:read");
+    private static final String WRITE_USER_SCOPE = "chat:write";
+
+    // Slack OAuth v2 uses user_scope (not scope) for user tokens: pass an empty bot scope and
+    // inject user_scope via extra params so users only access their own data.
     //
-    // Scope changes are not applied retroactively: an already-connected user keeps whatever
-    // scopes they granted at connect time. If a new scope is added here (e.g. chat:write),
-    // existing users must disconnect and reconnect before tools needing it will work.
+    // chat:write is requested only for users the gateway would let post (write-enabled connector
+    // and writer group), so a reader's Slack token never carries it. Scopes are fixed at connect
+    // time: a user who gains the writer role, or connected before chat:write was added, must
+    // disconnect and reconnect before slack_post_message works.
     @Override
     protected String getScope() { return ""; }
 
     @Override
-    protected String getExtraAuthParams() {
-        return "&user_scope=" + encode(String.join(" ",
-                // read side
-                "channels:read", "channels:history",
-                "groups:read", "groups:history",
-                "im:read", "im:history",
-                "mpim:read", "mpim:history",
-                "files:read",
-                "users:read", "users:read.email",
-                "search:read",
-                // write side — needed by slack_post_message
-                "chat:write"));
+    protected String getExtraAuthParams(UserSession session) {
+        return userScopeParam(session, currentWriteAccess());
+    }
+
+    static String userScopeParam(UserSession session, WriteAccess writeAccess) {
+        var scopes = new ArrayList<>(READ_USER_SCOPES);
+        if (writeAccess.permits(SlackMcpClient.MCP_ID, session)) scopes.add(WRITE_USER_SCOPE);
+        return "&user_scope=" + encode(String.join(" ", scopes));
     }
 
     @Override

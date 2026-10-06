@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIGZpbGw9IiMwNDA2MWEiIC8+CiAgCiAgPCEtLSBDZW50cmFsIEdhdGV3YXkvTmV0d29yayBTeW1ib2wgLS0+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMjU2LCAyNTYpIj4KICAgIDwhLS0gVGhpY2sgQmx1ZSBDb25uZWN0aW9uIExpbmVzIC0tPgogICAgPHBhdGggZD0iTS0xMDAgODAgTDAgMCBMMTAwIDgwIiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgLz4KICAgIDxsaW5lIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSItNDAiIHN0cm9rZT0iIzNiODJmNiIgc3Ryb2tlLXdpZHRoPSIyMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAvPgogICAgCiAgICA8IS0tIEJvbGQgVXB3YXJkIEFycm93IChXaGl0ZSkgLS0+CiAgICA8cGF0aCBkPSJNMCAtMTQwIFY0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIC8+CiAgICA8cGF0aCBkPSJNLTQwIC0xMDAgTDAgLTE0NSBMNDAgLTEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIC8+CiAgICAKICAgIDwhLS0gTGFyZ2UgR29sZCBOb2RlcyAtLT4KICAgIDxjaXJjbGUgY3g9Ii0xMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSI4MCIgcj0iMjgiIGZpbGw9IiNmYmJmMjQiIC8+CiAgICA8Y2lyY2xlIGN4PSIwIiBjeT0iMCIgcj0iMzIiIGZpbGw9IiNmYmJmMjQiIC8+CiAgPC9nPgo8L3N2Zz4=">
+    <title>Write Access - MCP Connections</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 760px; margin: 0 auto; padding: 0 24px 48px; color: #1a1a1a; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #e8e8e8; margin-bottom: 36px; }
+        .top-bar-links { display: flex; align-items: center; gap: 14px; font-size: 0.88rem; }
+        .btn-link { padding: 6px 14px; border-radius: 6px; border: 1px solid #d0d0d0; background: #fff; color: #555; text-decoration: none; font-size: 0.85rem; }
+        .btn-link:hover { background: #f5f5f5; }
+        h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; margin-top: 0; }
+        p.subtitle { color: #666; margin-top: 0; margin-bottom: 20px; }
+        .notice { background: #fff8e1; border: 1px solid #ffe082; color: #6b4200; border-radius: 8px; padding: 12px 16px; font-size: 0.85rem; margin-bottom: 20px; }
+        .notice p { margin: 0 0 6px; }
+        .notice p:last-child { margin-bottom: 0; }
+        .warn { background: #fee2e2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px; padding: 12px 16px; font-size: 0.85rem; margin-bottom: 20px; }
+        .source { font-size: 0.85rem; color: #555; margin-bottom: 14px; }
+        .card { border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; margin-bottom: 18px; }
+        .row { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #f0f0f0; font-size: 0.92rem; }
+        .row:last-child { border-bottom: none; }
+        .row label { display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer; }
+        .row input[type=checkbox] { width: 17px; height: 17px; cursor: pointer; }
+        .row-name { font-weight: 600; }
+        .row-id { font-size: 0.78rem; color: #888; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .state { margin-left: auto; font-size: 0.72rem; font-weight: 600; border-radius: 20px; padding: 2px 9px; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+        .state.on { color: #b45309; background: #fff3e0; border: 1px solid #fcd9a0; }
+        .state.off { color: #0a558c; background: #e8f1fb; border: 1px solid #c5ddf5; }
+        .row.changed { background: #fffbea; }
+        .actions { display: flex; gap: 10px; align-items: center; }
+        .btn-save { padding: 8px 18px; background: #0070d2; color: white; border: none; border-radius: 6px; font-size: 0.88rem; font-weight: 500; cursor: pointer; }
+        .btn-save:hover { background: #005fb2; }
+        .btn-save:disabled { background: #93c5fd; cursor: default; }
+        .btn-reset { padding: 8px 16px; background: #fff; color: #555; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 0.88rem; cursor: pointer; }
+        .btn-reset:disabled { color: #aaa; cursor: default; }
+        .message { font-size: 0.85rem; }
+        .message.ok { color: #166534; }
+        .message.err { color: #991b1b; }
+        .loading { color: #888; font-size: 0.9rem; padding: 12px 0; }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <svg width="210" height="60" viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg" style="display:block"><rect width="120" height="120" fill="#04061a"/><g transform="translate(60,65) scale(0.28)"><path d="M-100 80 L0 0 L100 80" fill="none" stroke="#3b82f6" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/><line x1="0" y1="0" x2="0" y2="-40" stroke="#3b82f6" stroke-width="24" stroke-linecap="round"/><path d="M0 -140 V40" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/><path d="M-45 -95 L0 -145 L45 -95" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><circle cx="-100" cy="80" r="32" fill="#fbbf24"/><circle cx="100" cy="80" r="32" fill="#fbbf24"/><circle cx="0" cy="0" r="36" fill="#fbbf24"/></g><g transform="translate(136,62)"><text font-family="Inter,system-ui,-apple-system,sans-serif" font-weight="900" font-size="52" fill="#04061a" letter-spacing="-2" dominant-baseline="auto">AKKA</text><text y="30" font-family="Inter,system-ui,-apple-system,sans-serif" font-weight="500" font-size="26" fill="#04061a" dominant-baseline="auto">MCP Gateway</text></g></svg>
+        <div class="top-bar-links">
+            <a class="btn-link" href="/">Back</a>
+            <a class="btn-link" href="/auth/logout">Sign out</a>
+        </div>
+    </div>
+
+    <h1>Write access</h1>
+    <p class="subtitle">Choose which systems may run write tools through the gateway.</p>
+
+    <div class="notice">
+        <p>A user can write on a system only if it is enabled here <strong>and</strong> they are in the writer group. Every other system is read-only for everyone.</p>
+        <p>Where a system's sign-in requests write permissions (today Slack posting), each writer must disconnect and reconnect that system after you enable it. Turning writes off does not revoke tokens people already hold, it only stops the gateway from using them.</p>
+        <p>Every change is recorded in the Interactions log.</p>
+    </div>
+    <div id="writer-warning" class="warn" style="display:none">No writer group is configured, so nobody can write regardless of this selection.</div>
+
+    <div id="content"><p class="loading">Loading…</p></div>
+
+    <script>
+        var original = [];
+        var version = 0;
+        var rows = [];
+
+        function load() {
+            fetch('/admin/write-access/data', { cache: 'no-store' })
+                .then(function(r) {
+                    if (r.status === 401 || r.redirected) { window.location.href = '/login'; return null; }
+                    if (r.status === 403) { throw new Error('Admin access is required.'); }
+                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                    return r.json();
+                })
+                .then(function(d) { if (d) render(d); })
+                .catch(function(e) {
+                    document.getElementById('content').innerHTML = '<div class="warn">Could not load: ' + esc(e.message) + '</div>';
+                });
+        }
+
+        function render(d) {
+            rows = d.connectors;
+            version = d.version;
+            original = rows.filter(function(c) { return c.enabled; }).map(function(c) { return c.mcpId; }).sort();
+            document.getElementById('writer-warning').style.display = d.writerGroupConfigured ? 'none' : '';
+
+            var source = d.updatedBy
+                ? 'Last changed by ' + esc(d.updatedBy) + (d.updatedAt ? ' on ' + esc(new Date(d.updatedAt).toLocaleString()) : '') + '.'
+                : 'Nothing has been enabled yet, so every system is read-only.';
+
+            var html = '<div class="source">' + source + '</div><div class="card" id="rows">';
+            rows.forEach(function(c, i) {
+                html += '<div class="row" id="row-' + i + '">' +
+                    '<label><input type="checkbox" id="cb-' + i + '"' + (c.enabled ? ' checked' : '') + ' onchange="changed()">' +
+                    '<span><span class="row-name">' + esc(c.mcpName) + '</span> <span class="row-id">' + esc(c.mcpId) + '</span></span></label>' +
+                    '<span class="state" id="state-' + i + '"></span></div>';
+            });
+            html += '</div><div class="actions">' +
+                '<button class="btn-save" id="btn-save" onclick="save()" disabled>Save changes</button>' +
+                '<button class="btn-reset" id="btn-reset" onclick="load()" disabled>Discard</button>' +
+                '<span class="message" id="message"></span></div>';
+            document.getElementById('content').innerHTML = html;
+            changed();
+        }
+
+        function selected() {
+            return rows.filter(function(c, i) { return document.getElementById('cb-' + i).checked; })
+                       .map(function(c) { return c.mcpId; }).sort();
+        }
+
+        function changed() {
+            var now = selected();
+            rows.forEach(function(c, i) {
+                var on = document.getElementById('cb-' + i).checked;
+                var state = document.getElementById('state-' + i);
+                state.className = 'state ' + (on ? 'on' : 'off');
+                state.textContent = on ? 'Read + write' : 'Read-only';
+                document.getElementById('row-' + i).className = 'row' + (on !== c.enabled ? ' changed' : '');
+            });
+            var dirty = now.join(',') !== original.join(',');
+            document.getElementById('btn-save').disabled = !dirty;
+            document.getElementById('btn-reset').disabled = !dirty;
+            document.getElementById('message').textContent = '';
+        }
+
+        function save() {
+            var now = selected();
+            var added = now.filter(function(id) { return original.indexOf(id) < 0; });
+            var removed = original.filter(function(id) { return now.indexOf(id) < 0; });
+            var summary = [];
+            if (added.length) summary.push('Enable writes on: ' + added.join(', '));
+            if (removed.length) summary.push('Disable writes on: ' + removed.join(', '));
+            if (!confirm(summary.join('\n') + '\n\nThis takes effect immediately for all users. Continue?')) return;
+
+            var btn = document.getElementById('btn-save');
+            btn.disabled = true;
+            fetch('/admin/write-access', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabledMcpIds: now, basedOnVersion: version })
+            }).then(function(r) {
+                if (r.status === 401) { window.location.href = '/login'; return null; }
+                if (!r.ok) { return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); }); }
+                return r.json();
+            }).then(function(d) {
+                if (!d) return;
+                render(d);
+                var m = document.getElementById('message');
+                m.className = 'message ok';
+                m.textContent = 'Saved.';
+            }).catch(function(e) {
+                var m = document.getElementById('message');
+                m.className = 'message err';
+                m.textContent = e.message;
+                btn.disabled = false;
+            });
+        }
+
+        function esc(s) {
+            return String(s || '')
+                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        load();
+    </script>
+</body>
+</html>

@@ -16,18 +16,25 @@ import java.nio.charset.StandardCharsets;
  */
 public class SlackApiClient {
 
-    private static final String BASE = "https://slack.com/api/";
+    private static final String DEFAULT_BASE = "https://slack.com/api/";
+    private static final String MISSING_SCOPE = "missing_scope";
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String token;
+    private final String base;
 
     public SlackApiClient(String token) {
+        this(token, DEFAULT_BASE);
+    }
+
+    SlackApiClient(String token, String base) {
         this.token = token;
+        this.base = base;
     }
 
     public JsonNode listChannels(String cursor, int limit) throws Exception {
-        String url = BASE + "conversations.list?types=public_channel,private_channel,mpim,im"
+        String url = base + "conversations.list?types=public_channel,private_channel,mpim,im"
                 + "&exclude_archived=true"
                 + "&limit=" + Math.min(limit, 200)
                 + (cursor != null && !cursor.isBlank() ? "&cursor=" + encode(cursor) : "");
@@ -35,7 +42,7 @@ public class SlackApiClient {
     }
 
     public JsonNode channelHistory(String channelId, String oldest, String latest, int limit) throws Exception {
-        String url = BASE + "conversations.history?channel=" + encode(channelId)
+        String url = base + "conversations.history?channel=" + encode(channelId)
                 + "&limit=" + Math.min(limit, 200)
                 + (oldest != null && !oldest.isBlank() ? "&oldest=" + encode(oldest) : "")
                 + (latest != null && !latest.isBlank() ? "&latest=" + encode(latest) : "");
@@ -43,22 +50,22 @@ public class SlackApiClient {
     }
 
     public JsonNode threadReplies(String channelId, String threadTs, int limit) throws Exception {
-        String url = BASE + "conversations.replies?channel=" + encode(channelId)
+        String url = base + "conversations.replies?channel=" + encode(channelId)
                 + "&ts=" + encode(threadTs)
                 + "&limit=" + Math.min(limit, 200);
         return call(url);
     }
 
     public JsonNode fileInfo(String fileId) throws Exception {
-        return call(BASE + "files.info?file=" + encode(fileId));
+        return call(base + "files.info?file=" + encode(fileId));
     }
 
     public JsonNode userInfo(String userId) throws Exception {
-        return call(BASE + "users.info?user=" + encode(userId));
+        return call(base + "users.info?user=" + encode(userId));
     }
 
     public JsonNode searchMessages(String query, int page, int count) throws Exception {
-        String url = BASE + "search.messages?query=" + encode(query)
+        String url = base + "search.messages?query=" + encode(query)
                 + "&count=" + Math.min(count, 100)
                 + "&page=" + Math.max(page, 1);
         return call(url);
@@ -69,15 +76,24 @@ public class SlackApiClient {
      * ({@code C…}/{@code D…}/{@code G…}); {@code @name}/{@code #name} aren't accepted by the API.
      * Pass {@code threadTs} to reply in a thread; omit for a new top-level message.
      *
-     * Requires the user token to carry the {@code chat:write} scope. Slack returns
-     * {@code missing_scope} otherwise — surface that as-is so the caller knows to reconnect.
+     * Requires the user token to carry the {@code chat:write} scope. The gateway only requests it
+     * for writers, so {@code missing_scope} means the user connected before gaining write access.
      */
     public JsonNode postMessage(String channel, String text, String threadTs) throws Exception {
         var body = MAPPER.createObjectNode();
         body.put("channel", channel);
         body.put("text", text);
         if (threadTs != null && !threadTs.isBlank()) body.put("thread_ts", threadTs);
-        return callPost(BASE + "chat.postMessage", MAPPER.writeValueAsString(body));
+        try {
+            return callPost(base + "chat.postMessage", MAPPER.writeValueAsString(body));
+        } catch (SlackApiException e) {
+            if (MISSING_SCOPE.equals(e.slackError())) {
+                throw new SlackApiException(MISSING_SCOPE
+                        + ": your Slack connection cannot post messages. Posting needs the gateway writer role; "
+                        + "once you have it, disconnect and reconnect Slack on the gateway dashboard to grant it.");
+            }
+            throw e;
+        }
     }
 
     private JsonNode call(String url) throws Exception {
@@ -124,8 +140,13 @@ public class SlackApiClient {
     }
 
     public static class SlackApiException extends RuntimeException {
+        private final String slackError;
+
         public SlackApiException(String slackError) {
             super("Slack API error: " + slackError);
+            this.slackError = slackError;
         }
+
+        String slackError() { return slackError; }
     }
 }

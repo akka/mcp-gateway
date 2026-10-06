@@ -93,6 +93,7 @@
                 <hr class="nav-divider" id="nav-admin-divider" style="display:none">
                 <a href="/okta-status" id="nav-okta-status" style="display:none">Okta Status</a>
                 <a href="/interactions" id="nav-interactions" style="display:none">Interactions</a>
+                <a href="/admin/write-access" id="nav-write-access" style="display:none">Write access</a>
                 <hr class="nav-divider">
                 <a href="/auth/logout" class="danger">Sign out</a>
             </nav>
@@ -569,6 +570,7 @@
                     document.getElementById('nav-admin-divider').style.display = '';
                     document.getElementById('nav-okta-status').style.display = '';
                     document.getElementById('nav-interactions').style.display = '';
+                    document.getElementById('nav-write-access').style.display = '';
                 }
 
                 fetch('/mcp/access', { cache: 'no-store' })
@@ -584,7 +586,8 @@
                             return mcpId.indexOf('google-workspace-') === 0 ? 'google-workspace' : mcpId;
                         }
 
-                        // Whether each MCP may run write tools, keyed both by card and by raw mcpId
+                        // Whether the signed-in user may run write tools on each MCP (connector is
+                        // write-enabled and the user is a writer), keyed both by card and by raw mcpId
                         // (the Workspace card needs the raw ids to annotate its four products).
                         var writeAllowedByCard = {};
                         var writeAllowedByMcp = {};
@@ -595,9 +598,7 @@
 
                         var WORKSPACE_CARD_ID = 'google-workspace';
 
-                        // One badge when the connector is read-only, two when it also allows writes.
-                        // This is the connector's own capability, not the viewer's role — a write
-                        // still needs the writer group on top.
+                        // One badge when the user is limited to reads, two when they may also write.
                         function accessLabels(writeAllowed) {
                             return writeAllowed ? ['Read', 'Write'] : ['Read-only'];
                         }
