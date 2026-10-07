@@ -4,14 +4,14 @@ import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
+import io.akka.mcp.gateway.testsupport.GatewayFixtures;
 import org.awaitility.Awaitility;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,6 +33,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * real Seamless account — that failure happens strictly after the permission
  * gate this test
  * checks, which is the boundary under test, not the upstream result.
+ *
+ * <p>Writes are enabled on {@code seamless} in {@link #enableSeamlessWrites}, so the connector-
+ * level write gate ({@code AkkaMcpGatewayWriteGateIntegrationTest} covers that one) never
+ * intercepts these calls before the reader/writer group check this class is actually testing.
  */
 public class SeamlessRiskIntegrationTest extends TestKitSupport {
 
@@ -51,21 +55,13 @@ public class SeamlessRiskIntegrationTest extends TestKitSupport {
                 """.formatted(READER_GROUP, WRITER_GROUP));
     }
 
-    /**
-     * Mints an MCP access token directly, the same credential kind the {@code /mcp}
-     * endpoint
-     * actually checks (see {@code AbstractProtectedEndpoint#requireMcpSession}) —
-     * not a browser
-     * {@code UserSessionEntity} token, which {@code /mcp} no longer accepts.
-     */
+    @BeforeEach
+    public void enableSeamlessWrites() {
+        GatewayFixtures.enableWritesOn(componentClient, List.of("seamless"));
+    }
+
     private String createMcpToken(String email, List<String> groups) {
-        var token = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(token)
-                .method(McpAccessTokenEntity::create)
-                .invoke(new McpAccessTokenEntity.CreateCommand(
-                        email, "User", groups, List.of(), "seamless-risk-test-client",
-                        Instant.now().plusSeconds(3600)));
-        return token;
+        return GatewayFixtures.mcpToken(componentClient, email, groups);
     }
 
     private void seedTools() {
