@@ -90,6 +90,14 @@ public class SlackMcpClient implements RemoteMcpClient {
                 - Post messages and thread replies (needs the writer role; if you connected Slack before \
                 posting was added, disconnect and reconnect it once)
 
+                ## Posting rules
+                - Every post starts with 🤖 so readers can tell an assistant wrote it. Tell your assistant \
+                explicitly if you do not want the marker on a particular message.
+                - Channels shared outside Akka (Slack Connect, or named `external-...`) are never posted \
+                to, with or without the marker. The assistant hands the text back so you can review it and \
+                send it yourself.
+                - If the gateway cannot tell whether a channel is shared outside Akka, nothing is posted.
+
                 ## Troubleshooting
                 - If tools are missing, verify that the Slack MCP URL is configured by your admin.
                 """.formatted(dashboardUrl));

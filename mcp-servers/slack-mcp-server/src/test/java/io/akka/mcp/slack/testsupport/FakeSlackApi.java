@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -20,9 +22,11 @@ public final class FakeSlackApi implements AutoCloseable {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     public static final String OK_REPLY = "{\"ok\":true,\"ts\":\"1700000000.000100\"}";
+    private static final String INTERNAL_CHANNEL = channel("eng", false, false);
 
     private final HttpServer server;
     private final List<Request> requests = new CopyOnWriteArrayList<>();
+    private final Map<String, String> repliesByPath = new ConcurrentHashMap<>();
     private volatile String reply = OK_REPLY;
 
     private FakeSlackApi(HttpServer server) {
@@ -33,6 +37,7 @@ public final class FakeSlackApi implements AutoCloseable {
         try {
             var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             var fake = new FakeSlackApi(server);
+            fake.reset();
             server.createContext("/", exchange -> {
                 try (exchange) {
                     var raw = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
@@ -42,7 +47,8 @@ public final class FakeSlackApi implements AutoCloseable {
                             exchange.getRequestHeaders().getFirst("Authorization"),
                             exchange.getRequestHeaders().getFirst("Content-Type"),
                             raw.isEmpty() ? null : MAPPER.readTree(raw)));
-                    var bytes = fake.reply.getBytes(StandardCharsets.UTF_8);
+                    var path = exchange.getRequestURI().getPath();
+                    var bytes = fake.repliesByPath.getOrDefault(path, fake.reply).getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().add("Content-Type", "application/json");
                     exchange.sendResponseHeaders(200, bytes.length);
                     exchange.getResponseBody().write(bytes);
@@ -60,9 +66,21 @@ public final class FakeSlackApi implements AutoCloseable {
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/";
     }
 
+    /** The reply for every path that has no reply of its own. */
     public FakeSlackApi replyingWith(String json) {
         this.reply = json;
         return this;
+    }
+
+    public FakeSlackApi replyingWith(String path, String json) {
+        repliesByPath.put(path, json);
+        return this;
+    }
+
+    /** A {@code conversations.info} reply describing one channel. */
+    public static String channel(String name, boolean extShared, boolean pendingExtShared) {
+        return "{\"ok\":true,\"channel\":{\"id\":\"C123\",\"name\":\"" + name
+                + "\",\"is_ext_shared\":" + extShared + ",\"is_pending_ext_shared\":" + pendingExtShared + "}}";
     }
 
     public List<Request> requests() {
@@ -74,8 +92,11 @@ public final class FakeSlackApi implements AutoCloseable {
         return requests.get(0);
     }
 
+    /** Back to answering every path with {@link #OK_REPLY}, except that every channel is an ordinary internal one. */
     public void reset() {
         requests.clear();
+        repliesByPath.clear();
+        repliesByPath.put("/conversations.info", INTERNAL_CHANNEL);
         reply = OK_REPLY;
     }
 
