@@ -49,8 +49,9 @@ public final class FakeHostedSlackMcp implements AutoCloseable {
                         case "tools/call" -> fake.toolCallReply;
                         default -> "";
                     };
-                    if (fake.asEventStream && !reply.isEmpty()) {
-                        reply = "event: message\ndata: " + reply + "\n\n";
+                    boolean alreadyAStream = reply.startsWith("event:") || reply.startsWith("data:");
+                    if ((fake.asEventStream || alreadyAStream) && !reply.isEmpty()) {
+                        if (!alreadyAStream) reply = "event: message\ndata: " + reply + "\n\n";
                         exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
                     } else {
                         exchange.getResponseHeaders().add("Content-Type", "application/json");

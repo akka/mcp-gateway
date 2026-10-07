@@ -356,11 +356,78 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
 
     @Test
     public void draftMessage_toAnExternalChannel_isStillDrafted() throws Exception {
-        SLACK.replyingWith("{\"ok\":true,\"channel\":{\"id\":\"C9\",\"name\":\"external-acme\",\"is_ext_shared\":true}}");
-
         var response = draftMessage("user-token", Map.of("channel", "C9", "text", "hello partner"));
 
         assertThat(response.path("result").path("isError").asBoolean(true)).isFalse();
         assertThat(HOSTED.toolCall().body().path("params").path("arguments").path("channel_id").asText()).isEqualTo("C9");
+        assertThat(SLACK.requests()).as("a draft sends nothing, so the channel is never looked up").isEmpty();
+    }
+
+    private void assertDraftFailed(JsonNode response, String... messageParts) {
+        assertThat(response.path("result").path("isError").asBoolean(false)).isTrue();
+        assertThat(resultText(response)).contains(messageParts);
+    }
+
+    @Test
+    public void draftMessage_whenTheHostedServerAnswersWithNothing_isNotReportedAsSaved() throws Exception {
+        HOSTED.replyingToTheToolCallWith("");
+
+        assertDraftFailed(draftMessage("user-token", Map.of("channel", "C123", "text", "hello team")),
+                "not known whether the draft was saved");
+    }
+
+    @Test
+    public void draftMessage_whenTheAnswerHasNoContent_isNotReportedAsSaved() throws Exception {
+        HOSTED.replyingToTheToolCallWith("{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}");
+
+        assertDraftFailed(draftMessage("user-token", Map.of("channel", "C123", "text", "hello team")),
+                "not known whether the draft was saved");
+    }
+
+    @Test
+    public void draftMessage_whenTheHostedServerFails_isAToolErrorWithTheStatus() throws Exception {
+        HOSTED.answeringWithStatus(502);
+
+        assertDraftFailed(draftMessage("user-token", Map.of("channel", "C123", "text", "hello team")),
+                "unavailable", "502");
+    }
+
+    @Test
+    public void draftMessage_whenSlackRateLimits_saysToWait() throws Exception {
+        HOSTED.answeringWithStatus(429);
+
+        assertDraftFailed(draftMessage("user-token", Map.of("channel", "C123", "text", "hello team")),
+                "rate limiting");
+    }
+
+    @Test
+    public void draftMessage_whenSlackRefusesTheTokenWithANonJsonBody_stillAsksToReconnect() throws Exception {
+        HOSTED.answeringWithStatus(401).replyingToTheToolCallWith("<html>unauthorized</html>");
+
+        assertDraftFailed(draftMessage("user-token", Map.of("channel", "C123", "text", "hello team")),
+                "reconnect");
+    }
+
+    @Test
+    public void draftMessage_readsTheAnswerToItsOwnRequestFromAStreamWithOtherMessages() throws Exception {
+        var progress = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}";
+        var other = "{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{}}";
+        HOSTED.replyingToTheToolCallWith("event: message\ndata: " + FakeHostedSlackMcp.toolResult(FakeHostedSlackMcp.DRAFT_CREATED, false)
+                + "\n\nevent: message\ndata: " + progress + "\n\nevent: message\ndata: " + other + "\n\n");
+
+        var response = draftMessage("user-token", Map.of("channel", "C123", "text", "hello team"));
+
+        assertThat(response.path("result").path("isError").asBoolean(true)).isFalse();
+        assertThat(resultText(response)).contains("https://app.slack.com/client/T1/C123");
+    }
+
+    @Test
+    public void draftMessage_whenTheAppIsNotEnabled_doesNotRepeatSlacksAdminLink() throws Exception {
+        HOSTED.replyingToTheToolCallWith("{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,"
+                + "\"message\":\"App is not enabled for Slack MCP server access. Enable it at https://api.slack.com/apps/A0123/app-assistant\"}}");
+
+        var response = draftMessage("user-token", Map.of("channel", "C123", "text", "hello team"));
+
+        assertThat(resultText(response)).contains("administrator").doesNotContain("A0123").doesNotContain("api.slack.com");
     }
 }
