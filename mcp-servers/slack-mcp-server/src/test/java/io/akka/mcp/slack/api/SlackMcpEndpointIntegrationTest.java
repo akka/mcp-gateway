@@ -141,6 +141,33 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
                 .containsExactly("one", MARKER + "two", MARKER + "three");
     }
 
+    private String textPostedWith(Object omitAssistantMarker) throws Exception {
+        SLACK.reset();
+        var arguments = new HashMap<String, Object>(Map.of("channel", "C123", "text", "hello team"));
+        arguments.put("omit_assistant_marker", omitAssistantMarker);
+        postMessage("user-token", arguments);
+        return postsToSlack().get(0).body().path("text").asText();
+    }
+
+    private static String describe(Object value) {
+        return value.getClass().getSimpleName() + " \"" + value + "\"";
+    }
+
+    @Test
+    public void omitAssistantMarker_acceptsTrueAsABooleanOrAsText() throws Exception {
+        for (Object value : List.of(true, "true", "TRUE", "True")) {
+            assertThat(textPostedWith(value)).as(describe(value)).isEqualTo("hello team");
+        }
+    }
+
+    @Test
+    public void omitAssistantMarker_anythingElseKeepsTheMarker() throws Exception {
+        for (Object value : List.of(false, "false", "yes", "1", 1, "")) {
+            assertThat(textPostedWith(value)).as(describe(value)).isEqualTo(MARKER + "hello team");
+        }
+        assertThat(textPostedWith(null)).isEqualTo(MARKER + "hello team");
+    }
+
     @Test
     public void postMessage_toAChannelSharedOutsideAkka_isNeverPosted_andNeverMarked() throws Exception {
         var externalChannels = List.of(
