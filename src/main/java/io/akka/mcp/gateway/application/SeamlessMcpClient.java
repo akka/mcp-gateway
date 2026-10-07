@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.mcp.client.DefaultMcpClient;
 import dev.langchain4j.mcp.client.McpClient;
-import dev.langchain4j.mcp.client.McpException;
 import dev.langchain4j.mcp.client.McpTextResourceContents;
 import dev.langchain4j.mcp.client.McpToolMetadataKeys;
 import dev.langchain4j.mcp.client.transport.http.StreamableHttpMcpTransport;
@@ -208,19 +207,28 @@ public class SeamlessMcpClient implements RemoteMcpClient {
         try (McpClient client = clientFactory.get()) {
             return call.run(client);
         } catch (Exception e) {
+            // Logged verbatim, in full, for operators to debug against — but never relayed to
+            // the client as-is (see upstreamFailureMessage): it's Seamless's own content, not
+            // ours, and the client reads this as data, including any LLM agent acting on it.
             log.warn("Seamless.AI upstream call failed: {}", e.toString());
             return new ToolCallResult(upstreamFailureMessage(e), true);
         }
     }
 
+    /**
+     * Deliberately generic for every failure, network-related or not: the underlying detail
+     * (an {@code McpException}'s error message, any other exception's message) is Seamless's own
+     * content and is never relayed to the client — only logged, in {@link #callUpstream}, for
+     * operators. Distinguishing network/timeout failures from other upstream failures is the one
+     * thing still useful to say without quoting Seamless directly.
+     */
     private static String upstreamFailureMessage(Throwable failure) {
         for (Throwable t = failure; t != null; t = t.getCause()) {
             if (t instanceof IOException || t instanceof TimeoutException) {
                 return "Seamless.AI is temporarily unavailable. Please try again shortly.";
             }
         }
-        String detail = failure instanceof McpException mcp && mcp.errorMessage() != null ? mcp.errorMessage() : failure.getMessage();
-        return "Seamless.AI request failed: " + (detail != null ? detail : failure.getClass().getSimpleName());
+        return "Seamless.AI request failed. If this keeps happening, contact your administrator.";
     }
 
     private static Boolean extractReadOnlyHint(Map<String, Object> metadata) {
