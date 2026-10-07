@@ -36,7 +36,7 @@ public class SlackApiClientTest {
         assertThat(request.authorization()).isEqualTo("Bearer xoxp-user-token");
         assertThat(request.contentType()).startsWith("application/json");
         assertThat(request.body().path("channel").asText()).isEqualTo("C12345");
-        assertThat(request.body().path("text").asText()).isEqualTo("hello team");
+        assertThat(request.body().path("text").asText()).isEqualTo("🤖 hello team");
         assertThat(request.body().path("thread_ts").asText()).isEqualTo("1699999999.000200");
         assertThat(reply.path("ts").asText()).isEqualTo("1700000000.000100");
     }

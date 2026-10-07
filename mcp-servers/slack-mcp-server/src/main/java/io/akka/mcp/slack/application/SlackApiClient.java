@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 public class SlackApiClient {
 
     private static final String DEFAULT_BASE = "https://slack.com/api/";
+    static final String MESSAGE_PREFIX = "🤖 ";
     private static final String MISSING_SCOPE = "missing_scope";
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -75,6 +76,8 @@ public class SlackApiClient {
      * Post a message to a channel, DM, or thread. {@code channel} must be a Slack id
      * ({@code C…}/{@code D…}/{@code G…}); {@code @name}/{@code #name} aren't accepted by the API.
      * Pass {@code threadTs} to reply in a thread; omit for a new top-level message.
+     * Every message is prefixed with {@link #MESSAGE_PREFIX} so readers can tell it was posted
+     * by an assistant on the user's behalf.
      *
      * Requires the user token to carry the {@code chat:write} scope. The gateway only requests it
      * for writers, so {@code missing_scope} means the user connected before gaining write access.
@@ -82,7 +85,7 @@ public class SlackApiClient {
     public JsonNode postMessage(String channel, String text, String threadTs) throws Exception {
         var body = MAPPER.createObjectNode();
         body.put("channel", channel);
-        body.put("text", text);
+        body.put("text", MESSAGE_PREFIX + text);
         if (threadTs != null && !threadTs.isBlank()) body.put("thread_ts", threadTs);
         try {
             return callPost(base + "chat.postMessage", MAPPER.writeValueAsString(body));

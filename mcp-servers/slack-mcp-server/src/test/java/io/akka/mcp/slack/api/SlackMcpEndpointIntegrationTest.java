@@ -102,7 +102,7 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
         assertThat(sent.path()).isEqualTo("/chat.postMessage");
         assertThat(sent.authorization()).isEqualTo("Bearer user-token");
         assertThat(sent.body().path("channel").asText()).isEqualTo("C123");
-        assertThat(sent.body().path("text").asText()).isEqualTo("hello team");
+        assertThat(sent.body().path("text").asText()).isEqualTo("🤖 hello team");
         assertThat(sent.body().path("thread_ts").asText()).isEqualTo("1700000000.000200");
     }
 

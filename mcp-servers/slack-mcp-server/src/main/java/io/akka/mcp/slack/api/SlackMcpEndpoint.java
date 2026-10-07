@@ -139,7 +139,8 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                 List.of("query")));
 
         tools.add(writeTool("slack_post_message",
-                "Post a message to a Slack channel, DM, or thread. Requires the chat:write scope; "
+                "Post a message to a Slack channel, DM, or thread. The message is prefixed with 🤖 automatically. "
+                        + "Requires the chat:write scope; "
                         + "if the user connected before this scope was requested they need to reconnect.",
                 props(
                         param("channel", "string",
