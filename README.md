@@ -119,7 +119,7 @@ working; new deployments should not set these.
 - `SLACK_REDIRECT_URI`
 - `SLACK_OKTA_APP_ID`
 
-The Slack server can also save a draft in the user's Slack "Drafts & Sent" instead of sending a message (`slack_draft_message`). Slack's Web API cannot create drafts, so it calls the draft tool of Slack's hosted MCP server (`https://mcp.slack.com/mcp`) with the user's own token. No extra scope or environment variable is needed, but the Slack app must have **Slack Model Context Protocol (MCP) Server** turned on under *Agents* in its settings. If your environment filters outbound traffic by host, allow `mcp.slack.com` as well as `slack.com`. Drafting is a write like posting: it needs the writer role and Slack writes enabled.
+Saving a Slack draft (`slack_draft_message`) uses Slack's hosted MCP server, so the Slack app needs **Slack Model Context Protocol (MCP) Server** turned on under *Agents* in its settings.
 
 **HubSpot** — marketing and CRM data.
 - `HUBSPOT_CLIENT_ID`
