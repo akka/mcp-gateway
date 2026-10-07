@@ -9,6 +9,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 /**
  * Thin wrapper around the Slack Web API. Stateless — caller supplies the user token per call.
@@ -17,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 public class SlackApiClient {
 
     private static final String DEFAULT_BASE = "https://slack.com/api/";
+    static final String MESSAGE_PREFIX = "🤖 ";
+    private static final Pattern EXTERNAL_CHANNEL_NAME = Pattern.compile("(?i)external[-_].*");
     private static final String MISSING_SCOPE = "missing_scope";
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -72,17 +75,36 @@ public class SlackApiClient {
     }
 
     /**
+     * A conversation as far as posting is concerned. {@code external} is true when it is shared
+     * outside the organisation (Slack Connect, including one still pending) or is named with the
+     * {@code external-} prefix this organisation uses for customer and partner channels.
+     */
+    public record Channel(String id, String name, boolean external) {}
+
+    public Channel channelInfo(String channelId) throws Exception {
+        var channel = call(base + "conversations.info?channel=" + encode(channelId)).path("channel");
+        if (channel.isMissingNode() || channel.isNull()) throw new SlackApiException("channel_info_unavailable");
+        var name = channel.path("name").asText("");
+        boolean external = channel.path("is_ext_shared").asBoolean(false)
+                || channel.path("is_pending_ext_shared").asBoolean(false)
+                || EXTERNAL_CHANNEL_NAME.matcher(name).matches();
+        return new Channel(channelId, name, external);
+    }
+
+    /**
      * Post a message to a channel, DM, or thread. {@code channel} must be a Slack id
      * ({@code C…}/{@code D…}/{@code G…}); {@code @name}/{@code #name} aren't accepted by the API.
      * Pass {@code threadTs} to reply in a thread; omit for a new top-level message.
+     * With {@code markAsAssistant} the text is prefixed with {@link #MESSAGE_PREFIX} so readers can
+     * tell an assistant posted it on the user's behalf.
      *
-     * Requires the user token to carry the {@code chat:write} scope. The gateway only requests it
-     * for writers, so {@code missing_scope} means the user connected before gaining write access.
+     * Requires the user token to carry the {@code chat:write} scope. The gateway requests it from
+     * every user, so {@code missing_scope} means the connection predates it and one reconnect fixes it.
      */
-    public JsonNode postMessage(String channel, String text, String threadTs) throws Exception {
+    public JsonNode postMessage(String channel, String text, String threadTs, boolean markAsAssistant) throws Exception {
         var body = MAPPER.createObjectNode();
         body.put("channel", channel);
-        body.put("text", text);
+        body.put("text", (markAsAssistant ? MESSAGE_PREFIX : "") + text);
         if (threadTs != null && !threadTs.isBlank()) body.put("thread_ts", threadTs);
         try {
             return callPost(base + "chat.postMessage", MAPPER.writeValueAsString(body));

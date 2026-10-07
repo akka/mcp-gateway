@@ -139,14 +139,21 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                 List.of("query")));
 
         tools.add(writeTool("slack_post_message",
-                "Post a message to a Slack channel, DM, or thread. Requires the chat:write scope; "
+                "Post a message to a Slack channel, DM, or thread. The message is prefixed with 🤖 automatically so "
+                        + "readers can tell an assistant posted it; set omit_assistant_marker only if the user has "
+                        + "explicitly told you not to mark this message. Messages to channels shared outside Akka "
+                        + "(Slack Connect or external- channels) are never posted: you get the text back for the user "
+                        + "to review and send themselves. "
+                        + "Requires the chat:write scope; "
                         + "if the user connected before this scope was requested they need to reconnect.",
                 props(
                         param("channel", "string",
                                 "Channel/DM/group id (e.g. C12345, D12345, G12345). Use slack_list_channels or slack_search_messages to find it; @name and #name are not accepted."),
                         param("text", "string", "Message body (Slack mrkdwn supported)."),
                         param("thread_ts", "string",
-                                "Optional parent message timestamp (e.g. 1234567890.123456). Omit to post as a new top-level message.")),
+                                "Optional parent message timestamp (e.g. 1234567890.123456). Omit to post as a new top-level message."),
+                        param("omit_assistant_marker", "boolean",
+                                "Leave unset. Set to true only when the user has explicitly asked for this message not to be marked as posted by an assistant.")),
                 List.of("channel", "text")));
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -206,7 +213,10 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                     String channel = required(args, "channel");
                     String messageText = required(args, "text");
                     String threadTs = str(args, "thread_ts");
-                    yield MAPPER.writeValueAsString(slack.postMessage(channel, messageText, threadTs));
+                    boolean markAsAssistant = !boolArg(args, "omit_assistant_marker");
+                    var target = channelOrNotPosted(slack, channel);
+                    if (target.external()) throw new NotPostedException(externalChannelNotPosted(target, messageText));
+                    yield MAPPER.writeValueAsString(slack.postMessage(channel, messageText, threadTs, markAsAssistant));
                 }
                 default -> throw new IllegalArgumentException("Unknown tool: " + toolName);
             };
@@ -216,6 +226,13 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
             result.put("isError", false);
             return responseJson(id, result);
 
+        } catch (NotPostedException e) {
+            log.info("tools/call {} not posted", toolName);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("content", List.of(Map.of("type", "text", "text", e.getMessage())));
+            result.put("isError", true);
+            return responseJson(id, result);
+
         } catch (Exception e) {
             log.warn("tools/call {} failed: {}", toolName, e.getMessage());
             Map<String, Object> result = new LinkedHashMap<>();
@@ -223,6 +240,28 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
             result.put("isError", true);
             return responseJson(id, result);
         }
+    }
+
+    /** A post that was deliberately not made. The message may carry the user's text, so it is never logged. */
+    private static final class NotPostedException extends RuntimeException {
+        NotPostedException(String message) { super(message); }
+    }
+
+    /** If the channel cannot be checked it is not posted to: an unknown channel might be external. */
+    private static SlackApiClient.Channel channelOrNotPosted(SlackApiClient slack, String channel) throws Exception {
+        try {
+            return slack.channelInfo(channel);
+        } catch (SlackApiClient.SlackApiException e) {
+            throw new NotPostedException("Not posted: could not check whether this conversation is shared outside Akka ("
+                    + e.slackError() + "). Nothing was sent.");
+        }
+    }
+
+    private static String externalChannelNotPosted(SlackApiClient.Channel target, String text) {
+        var where = target.name().isBlank() ? "This conversation" : "#" + target.name();
+        return "Not posted: " + where + " is shared outside Akka, and an assistant never posts there. A person reviews "
+                + "and sends messages to external channels, without the assistant marker. Give the user this message "
+                + "to review and send themselves:\n\n" + text;
     }
 
     // -- tool schema helpers --
@@ -276,6 +315,12 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
     private static String str(Map<String, Object> args, String key) {
         Object v = args.get(key);
         return v != null ? v.toString() : null;
+    }
+
+    private static boolean boolArg(Map<String, Object> args, String key) {
+        Object v = args.get(key);
+        if (v instanceof Boolean b) return b;
+        return v != null && Boolean.parseBoolean(v.toString());
     }
 
     private static int intArg(Map<String, Object> args, String key, int defaultValue) {
