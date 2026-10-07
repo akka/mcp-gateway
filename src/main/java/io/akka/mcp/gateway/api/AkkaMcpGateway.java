@@ -81,7 +81,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         var accessible = new ArrayList<McpAccessEntry>();
         var inaccessible = new ArrayList<McpAccessEntry>();
         for (var client : clients) {
-            if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
+            if (client.isLocalGuidance()) continue;
             var hasAccess = appAssigned(session, client);
             var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName(),
                     hasAccess && writeAccess.permits(client.getMcpId(), session));
@@ -179,7 +179,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         //    never fail or block — this guarantees the list is never empty and that
         //    `howto_refresh_tools` is always present, even if every upstream is down.
         for (var client : clients) {
-            if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) {
+            if (client.isLocalGuidance()) {
                 addLocalTools(client, userId, allTools);
             }
         }
@@ -190,7 +190,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         //    rather than aborting the whole response.
         Map<RemoteMcpClient, Future<List<RemoteMcpClient.ToolEntry>>> pending = new LinkedHashMap<>();
         for (var client : clients) {
-            if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
+            if (client.isLocalGuidance()) continue;
             var clientName = client.getClass().getSimpleName();
             if (!appAssigned(session, client)) {
                 log.info("MCP tools/list: {} app not assigned to user {} — hiding tools", clientName, userId);

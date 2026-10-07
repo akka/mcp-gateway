@@ -16,9 +16,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Starting the Slack sign-in through the real endpoint: {@code chat:write} is only requested from a
- * user who could actually post. This checks the wiring from the connect request to the scopes Slack
- * is asked for, which the pure scope function test cannot.
+ * Starting the Slack sign-in through the real endpoint. Slack asks every user for the same scopes
+ * whatever their role or the write policy, as the other connectors do, so enabling writes or gaining
+ * the writer role never needs a reconnect: the write gate decides who may post. If the scopes were
+ * made to depend on role or policy again, each such change would force users to reconnect.
  */
 public class SlackConnectScopesIntegrationTest extends TestKitSupport {
 
@@ -35,10 +36,6 @@ public class SlackConnectScopesIntegrationTest extends TestKitSupport {
                 """.formatted(READER_GROUP, WRITER_GROUP));
     }
 
-    private void enableWritesOn(List<String> mcpIds) {
-        GatewayFixtures.enableWritesOn(componentClient, mcpIds);
-    }
-
     private List<String> scopesRequestedBy(List<String> groups) {
         var session = GatewayFixtures.browserSession(componentClient, "user-" + UUID.randomUUID() + "@lightbend.com", groups);
 
@@ -48,10 +45,6 @@ public class SlackConnectScopesIntegrationTest extends TestKitSupport {
 
         assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
         var location = response.httpResponse().getHeader("Location").orElseThrow().value();
-        return userScopes(location);
-    }
-
-    private static List<String> userScopes(String location) {
         return Arrays.stream(URI.create(location).getRawQuery().split("&"))
                 .filter(pair -> pair.startsWith("user_scope="))
                 .map(pair -> URLDecoder.decode(pair.substring("user_scope=".length()), StandardCharsets.UTF_8))
@@ -60,23 +53,33 @@ public class SlackConnectScopesIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void aWriter_isAskedToGrantPosting_whenSlackIsEnabled() {
-        enableWritesOn(List.of("slack"));
+    public void aWriter_isAskedToGrantPosting_whetherOrNotSlackIsEnabled() {
+        GatewayFixtures.enableWritesOn(componentClient, List.of("slack"));
+        var whenEnabled = scopesRequestedBy(List.of(READER_GROUP, WRITER_GROUP));
+        GatewayFixtures.enableWritesOn(componentClient, List.of());
+        var whenNotEnabled = scopesRequestedBy(List.of(READER_GROUP, WRITER_GROUP));
 
-        assertThat(scopesRequestedBy(List.of(READER_GROUP, WRITER_GROUP))).contains("search:read", "chat:write");
+        assertThat(whenEnabled).contains("search:read", "chat:write");
+        assertThat(whenNotEnabled).containsExactlyInAnyOrderElementsOf(whenEnabled);
     }
 
     @Test
-    public void aReader_isNeverAskedToGrantPosting() {
-        enableWritesOn(List.of("slack"));
+    public void aReader_isAskedForTheSameScopesAsAWriter() {
+        GatewayFixtures.enableWritesOn(componentClient, List.of("slack"));
 
-        assertThat(scopesRequestedBy(List.of(READER_GROUP))).contains("search:read").doesNotContain("chat:write");
+        var reader = scopesRequestedBy(List.of(READER_GROUP));
+        var writer = scopesRequestedBy(List.of(READER_GROUP, WRITER_GROUP));
+
+        assertThat(reader).contains("chat:write");
+        assertThat(reader).containsExactlyInAnyOrderElementsOf(writer);
     }
 
     @Test
-    public void aWriter_isNotAskedToGrantPosting_whenSlackIsNotEnabled() {
-        enableWritesOn(List.of());
+    public void aUserWithNoRole_isAskedForTheSameScopesToo() {
+        var noRole = scopesRequestedBy(List.of());
+        var writer = scopesRequestedBy(List.of(READER_GROUP, WRITER_GROUP));
 
-        assertThat(scopesRequestedBy(List.of(READER_GROUP, WRITER_GROUP))).contains("search:read").doesNotContain("chat:write");
+        assertThat(noRole).contains("chat:write");
+        assertThat(noRole).containsExactlyInAnyOrderElementsOf(writer);
     }
 }

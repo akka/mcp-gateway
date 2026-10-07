@@ -55,7 +55,7 @@
 
     <div class="notice">
         <p>A user can write on a system only if it is enabled here <strong>and</strong> they are in the writer group. Every other system is read-only for everyone.</p>
-        <p>Slack posting needs each writer to disconnect and reconnect Slack after you enable it, because Slack's sign-in only asks writers for the posting permission. Other systems already ask every user for their permissions, so enabling them needs no reconnect. Turning writes off does not revoke tokens people already hold, it only stops the gateway from using them.</p>
+        <p>Every system asks each user for the same permissions whatever their role, so enabling one needs no reconnect. Turning writes off does not revoke tokens people already hold, it only stops the gateway from using them.</p>
         <p>Every change is recorded in the Interactions log.</p>
     </div>
     <div id="writer-warning" class="warn" style="display:none">No writer group is configured, so nobody can write regardless of this selection.</div>
@@ -134,10 +134,7 @@
             if (added.length) summary.push('Enable writes on: ' + added.join(', '));
             if (removed.length) summary.push('Disable writes on: ' + removed.join(', '));
             var effect = [];
-            if (added.length) {
-                effect.push('Users in the writer group can use the systems you enable straight away' +
-                    (added.indexOf('slack') >= 0 ? ', except Slack posting, which each writer can only use after reconnecting Slack.' : '.'));
-            }
+            if (added.length) effect.push('Users in the writer group can use the systems you enable straight away.');
             if (removed.length) effect.push('Writes on the systems you disable stop for everyone straight away.');
             if (!confirm(summary.join('\n') + '\n\n' + effect.join('\n') + '\n\nContinue?')) return;
 

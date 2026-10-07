@@ -87,8 +87,8 @@ public class SlackMcpClient implements RemoteMcpClient {
                 - Search messages across channels
                 - List channels and members
                 - Read conversation history
-                - Post messages and thread replies (needs the writer role; if you gained it after \
-                connecting, disconnect and reconnect Slack to grant posting)
+                - Post messages and thread replies (needs the writer role; if you connected Slack before \
+                posting was added, disconnect and reconnect it once)
 
                 ## Troubleshooting
                 - If tools are missing, verify that the Slack MCP URL is configured by your admin.

@@ -9,11 +9,8 @@ import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
 import io.akka.mcp.gateway.application.SlackConnectionEntity;
 import io.akka.mcp.gateway.application.SlackMcpClient;
-import io.akka.mcp.gateway.domain.UserSession;
-import io.akka.mcp.gateway.domain.WriteAccess;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,37 +54,28 @@ public class SlackOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     @Override protected String getTokenEndpoint() { return SLACK_TOKEN_ENDPOINT; }
     @Override protected String getProviderLabel() { return "Slack"; }
 
-    private static final List<String> READ_USER_SCOPES = List.of(
+    private static final List<String> USER_SCOPES = List.of(
             "channels:read", "channels:history",
             "groups:read", "groups:history",
             "im:read", "im:history",
             "mpim:read", "mpim:history",
             "files:read",
             "users:read", "users:read.email",
-            "search:read");
-    private static final String WRITE_USER_SCOPE = "chat:write";
+            "search:read",
+            "chat:write");
 
     // Slack OAuth v2 uses user_scope (not scope) for user tokens: pass an empty bot scope and
     // inject user_scope via extra params so users only access their own data.
     //
-    // chat:write is requested only for users the gateway would let post (write-enabled connector
-    // and writer group). The redirect is not signed and the callback does not check what Slack
-    // granted, so this limits what we ask for, not what a user can obtain: the write gate is what
-    // stops a reader posting. Scopes are fixed at connect time: a user who gains the writer role,
-    // or connected before chat:write was added, must disconnect and reconnect before
-    // slack_post_message works.
+    // chat:write is requested from every user, as the other connectors request their write scopes,
+    // so enabling writes or gaining the writer role never needs a reconnect: the write gate decides
+    // who may post. Connections made before chat:write was added need one reconnect.
     @Override
     protected String getScope() { return ""; }
 
     @Override
-    protected String getExtraAuthParams(UserSession session) {
-        return userScopeParam(session, currentWriteAccess());
-    }
-
-    static String userScopeParam(UserSession session, WriteAccess writeAccess) {
-        var scopes = new ArrayList<>(READ_USER_SCOPES);
-        if (writeAccess.permits(SlackMcpClient.MCP_ID, session)) scopes.add(WRITE_USER_SCOPE);
-        return "&user_scope=" + encode(String.join(" ", scopes));
+    protected String getExtraAuthParams() {
+        return "&user_scope=" + encode(String.join(" ", USER_SCOPES));
     }
 
     @Override
