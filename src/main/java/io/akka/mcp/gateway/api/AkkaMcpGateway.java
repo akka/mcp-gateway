@@ -341,8 +341,8 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         var toolMeta = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                 .method(McpRegistryEntity::findTool)
                 .invoke(toolName);
-        boolean isGuidanceOnly = client.getMcpId().equals(HowToMcpClient.MCP_ID);
-        boolean isWrite = !isGuidanceOnly && toolMeta
+        boolean isLocalGuidance = client.isLocalGuidance();
+        boolean isWrite = !isLocalGuidance && toolMeta
                 .map(McpConfig.ToolMeta::isWrite)
                 .orElse(true); // unknown → assume write (safe default)
         log.info("MCP tools/call: name={} opType={}", toolName, isWrite ? "write" : "read");
@@ -376,7 +376,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
 
         boolean isRead = !isWrite;
         String label = isRead ? "Read": "Write";
-        boolean canInteract = isGuidanceOnly
+        boolean canInteract = isLocalGuidance
                 ? session.canRead(readerGroup) || session.canWrite(writerGroup)
                 : session.canInteract(isWrite, readerGroup, writerGroup);
         if (!canInteract) {
