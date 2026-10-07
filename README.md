@@ -136,6 +136,11 @@ working; new deployments should not set these.
 - `GROUNDCOVER_REDIRECT_URI`
 - `GROUNDCOVER_OKTA_APP_ID`
 
+**Seamless.AI** — contact and company search, enrichment, and outreach. Access to this is enabled via OKTA.
+- `SEAMLESS_API_KEY`
+- `SEAMLESS_MCP_URL` *(optional — defaults to Seamless's hosted server)*
+- `SEAMLESS_OKTA_APP_ID`
+
 The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_MCP_URL` and `OKTA_ADMIN_OKTA_APP_ID`.
 
 A few settings are optional across the board: `OKTA_JWKS_URI` overrides where Okta sign-in keys are fetched from, and `MCP_PROXY_OKTA_API_TOKEN` enables the Okta account-status page.
@@ -175,6 +180,7 @@ Every system is tied to an Okta application. Being assigned that application is 
 | HubSpot | HubSpot |
 | Reo | Reo |
 | Groundcover | Groundcover |
+| Seamless.AI | Seamless.AI |
 | Okta admin lookups | Okta MCP Admin |
 
 Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
