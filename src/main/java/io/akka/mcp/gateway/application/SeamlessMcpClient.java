@@ -11,9 +11,6 @@ import dev.langchain4j.mcp.client.transport.http.StreamableHttpMcpTransport;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
 import dev.langchain4j.model.chat.request.json.JsonSchemaElement;
 import io.akka.mcp.gateway.domain.McpConfig;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -24,22 +21,15 @@ import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Talks to the Seamless.AI MCP server with a single, operator-configured API
- * key (the {@code
- * Token} header Seamless documents as its non-OAuth auth method) rather than
- * per-user OAuth — the
- * same shared-credential pattern {@link OktaMcpClient} uses for the internal
- * Okta lookups server.
- * Like every other system, access is still gated by an Okta application
- * assignment ({@code SEAMLESS_OKTA_APP_ID}, blank disables the gate) and by
- * the usual read/write permission check. Every
- * user shares this one Seamless identity; the gateway still attributes and
- * audits each call to the
- * requesting user locally (see {@code McpInteractionEntity}), but Seamless
- * itself sees one connection,
- * not one per person.
+ * Talks to the Seamless.AI MCP server with a single, operator-configured API key (the {@code
+ * Token} header Seamless documents as its non-OAuth auth method) rather than per-user OAuth — the same shared-credential pattern {@link OktaMcpClient} uses for
+ * the internal Okta lookups server. Like every other system, access is still gated by an Okta application assignment ({@code SEAMLESS_OKTA_APP_ID}, blank
+ * disables the gate) and by the usual read/write permission check. Every user shares this one Seamless identity; the gateway still attributes and audits each
+ * call to the requesting user locally (see {@code McpInteractionEntity}), but Seamless itself sees one connection, not one per person.
  */
 public class SeamlessMcpClient implements RemoteMcpClient {
 
@@ -50,8 +40,7 @@ public class SeamlessMcpClient implements RemoteMcpClient {
     private static final String RESOURCE_URI_PREFIX = "seamless://";
     private static final String READ_RESOURCE_DESCRIPTION = "Read a read-only Seamless.AI reference resource by URI. Read seamless://credits before research, "
             + "and seamless://email-accounts, seamless://templates and seamless://templates/variables before "
-            + "creating campaigns or sending email. Also available: seamless://me, seamless://connect/config "
-            + "and seamless://campaigns/{campaignId}.";
+            + "creating campaigns or sending email. Also available: seamless://me, seamless://connect/config " + "and seamless://campaigns/{campaignId}.";
 
     private static final Logger log = LoggerFactory.getLogger(SeamlessMcpClient.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -90,10 +79,8 @@ public class SeamlessMcpClient implements RemoteMcpClient {
 
     @Override
     public HowToContent howTo(String dashboardUrl) {
-        return new HowToContent(
-                "Lookup instructions for using Seamless.AI via the MCP Gateway.",
-                "Search and research contacts and companies, run campaigns, send email, log calls, manage tasks",
-                """
+        return new HowToContent("Lookup instructions for using Seamless.AI via the MCP Gateway.",
+                "Search and research contacts and companies, run campaigns, send email, log calls, manage tasks", """
                         # How to Use Seamless.AI
 
                         ## Prerequisites
@@ -123,8 +110,7 @@ public class SeamlessMcpClient implements RemoteMcpClient {
                         - "MCP Server access is not enabled for your account": ask your Seamless.AI administrator to enable MCP access.
                         - Missing campaign, email, call or task tools: your organization may not have the Seamless.AI Connect licence.
                         - If the card shows unavailable, the gateway's Seamless.AI API key may not be configured; contact your admin.
-                        """
-                        .formatted(dashboardUrl));
+                        """.formatted(dashboardUrl));
     }
 
     @Override
@@ -156,8 +142,7 @@ public class SeamlessMcpClient implements RemoteMcpClient {
 
                 Boolean readOnlyHint = extractReadOnlyHint(spec.metadata());
                 boolean hasBodyParam = hasBodyParam(spec.parameters());
-                var meta = new McpConfig.ToolMeta(prefixedName, spec.description(), inputSchema, readOnlyHint,
-                        hasBodyParam);
+                var meta = new McpConfig.ToolMeta(prefixedName, spec.description(), inputSchema, readOnlyHint, hasBodyParam);
                 entries.add(new ToolEntry(tool, meta));
             }
             if (!specs.isEmpty()) {
@@ -168,15 +153,13 @@ public class SeamlessMcpClient implements RemoteMcpClient {
     }
 
     /**
-     * Gateway-provided tool: the gateway only proxies tools, so resources are read
-     * through this one.
+     * Gateway-provided tool: the gateway only proxies tools, so resources are read through this one.
      */
     private static ToolEntry readResourceToolEntry() {
         Map<String, Object> inputSchema = new LinkedHashMap<>();
         inputSchema.put("type", "object");
-        inputSchema.put("properties", Map.of("uri", Map.of(
-                "type", "string",
-                "description", "Resource URI, e.g. seamless://credits (must start with seamless://)")));
+        inputSchema.put("properties",
+                Map.of("uri", Map.of("type", "string", "description", "Resource URI, e.g. seamless://credits (must start with seamless://)")));
         inputSchema.put("required", List.of("uri"));
 
         Map<String, Object> tool = new LinkedHashMap<>();
@@ -184,8 +167,7 @@ public class SeamlessMcpClient implements RemoteMcpClient {
         tool.put("description", READ_RESOURCE_DESCRIPTION);
         tool.put("inputSchema", inputSchema);
         tool.put("annotations", Map.of(McpToolMetadataKeys.READ_ONLY_HINT, true));
-        return new ToolEntry(tool,
-                new McpConfig.ToolMeta(READ_RESOURCE_TOOL, READ_RESOURCE_DESCRIPTION, inputSchema, true, false));
+        return new ToolEntry(tool, new McpConfig.ToolMeta(READ_RESOURCE_TOOL, READ_RESOURCE_DESCRIPTION, inputSchema, true, false));
     }
 
     @Override
@@ -194,15 +176,11 @@ public class SeamlessMcpClient implements RemoteMcpClient {
             Object uri = arguments == null ? null : arguments.get("uri");
             if (!(uri instanceof String resourceUri) || !resourceUri.startsWith(RESOURCE_URI_PREFIX)) {
                 return new ToolCallResult(
-                        "Invalid or missing `uri`: it must be a string starting with " + RESOURCE_URI_PREFIX
-                                + " (for example seamless://credits).",
-                        true);
+                        "Invalid or missing `uri`: it must be a string starting with " + RESOURCE_URI_PREFIX + " (for example seamless://credits).", true);
             }
             return callUpstream(client -> {
                 var contents = client.readResource(resourceUri).contents();
-                var text = contents.stream()
-                        .filter(McpTextResourceContents.class::isInstance)
-                        .map(c -> ((McpTextResourceContents) c).text())
+                var text = contents.stream().filter(McpTextResourceContents.class::isInstance).map(c -> ((McpTextResourceContents) c).text())
                         .collect(Collectors.joining("\n"));
                 return new ToolCallResult(text, false);
             });
@@ -211,11 +189,7 @@ public class SeamlessMcpClient implements RemoteMcpClient {
         String upstreamName = toolName.startsWith(TOOL_PREFIX) ? toolName.substring(TOOL_PREFIX.length()) : toolName;
         return callUpstream(client -> {
             String argsJson = MAPPER.writeValueAsString(arguments);
-            var request = ToolExecutionRequest.builder()
-                    .id(UUID.randomUUID().toString())
-                    .name(upstreamName)
-                    .arguments(argsJson)
-                    .build();
+            var request = ToolExecutionRequest.builder().id(UUID.randomUUID().toString()).name(upstreamName).arguments(argsJson).build();
             var result = client.executeTool(request);
             log.info("tools/call result isError={}", result.isError());
             return new ToolCallResult(result.resultText(), result.isError());
@@ -227,9 +201,8 @@ public class SeamlessMcpClient implements RemoteMcpClient {
     }
 
     /**
-     * Runs a call against Seamless with the shared API key. Anything that goes
-     * wrong upstream
-     * becomes an error result the user can read, rather than an exception.
+     * Runs a call against Seamless with the shared API key. Anything that goes wrong upstream becomes an error result the user can read, rather than an
+     * exception.
      */
     private ToolCallResult callUpstream(UpstreamCall call) {
         try (McpClient client = clientFactory.get()) {
@@ -246,9 +219,7 @@ public class SeamlessMcpClient implements RemoteMcpClient {
                 return "Seamless.AI is temporarily unavailable. Please try again shortly.";
             }
         }
-        String detail = failure instanceof McpException mcp && mcp.errorMessage() != null
-                ? mcp.errorMessage()
-                : failure.getMessage();
+        String detail = failure instanceof McpException mcp && mcp.errorMessage() != null ? mcp.errorMessage() : failure.getMessage();
         return "Seamless.AI request failed: " + (detail != null ? detail : failure.getClass().getSimpleName());
     }
 
@@ -271,12 +242,8 @@ public class SeamlessMcpClient implements RemoteMcpClient {
         if (metadata == null || metadata.isEmpty())
             return Map.of();
         Map<String, Object> annotations = new LinkedHashMap<>();
-        for (var key : List.of(
-                McpToolMetadataKeys.READ_ONLY_HINT,
-                McpToolMetadataKeys.DESTRUCTIVE_HINT,
-                McpToolMetadataKeys.IDEMPOTENT_HINT,
-                McpToolMetadataKeys.OPEN_WORLD_HINT,
-                McpToolMetadataKeys.TITLE)) {
+        for (var key : List.of(McpToolMetadataKeys.READ_ONLY_HINT, McpToolMetadataKeys.DESTRUCTIVE_HINT, McpToolMetadataKeys.IDEMPOTENT_HINT,
+                McpToolMetadataKeys.OPEN_WORLD_HINT, McpToolMetadataKeys.TITLE)) {
             var value = metadata.get(key);
             if (value != null)
                 annotations.put(key, value);
@@ -288,15 +255,8 @@ public class SeamlessMcpClient implements RemoteMcpClient {
         // Seamless's non-OAuth auth method: a static API key in the `Token` header (not
         // `Authorization: Bearer`), created under Settings > Public API Connections >
         // API Key.
-        var transport = new StreamableHttpMcpTransport.Builder()
-                .url(mcpUrl)
-                .customHeaders(Map.of("Token", apiKey))
-                .timeout(Duration.ofSeconds(30))
-                .build();
-        return new DefaultMcpClient.Builder()
-                .transport(transport)
-                .initializationTimeout(Duration.ofSeconds(15))
-                .toolExecutionTimeout(Duration.ofSeconds(30))
+        var transport = new StreamableHttpMcpTransport.Builder().url(mcpUrl).customHeaders(Map.of("Token", apiKey)).timeout(Duration.ofSeconds(30)).build();
+        return new DefaultMcpClient.Builder().transport(transport).initializationTimeout(Duration.ofSeconds(15)).toolExecutionTimeout(Duration.ofSeconds(30))
                 .build();
     }
 }
