@@ -58,7 +58,7 @@ public class SlackMcpClient implements RemoteMcpClient {
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(
                 "Step-by-step instructions for connecting your Slack workspace to the MCP Gateway.",
-                "Search messages, list channels, read conversations, post messages (writer role)",
+                "Search messages, list channels, read conversations, save drafts and post messages (writer role)",
                 """
                 # How to Connect Slack
 
@@ -87,6 +87,8 @@ public class SlackMcpClient implements RemoteMcpClient {
                 - Search messages across channels
                 - List channels and members
                 - Read conversation history
+                - Save a draft message or thread reply in your Slack "Drafts & Sent" for you to review and send \
+                yourself (needs the writer role). Slack allows one draft per channel
                 - Post messages and thread replies (needs the writer role; if you connected Slack before \
                 posting was added, disconnect and reconnect it once)
 

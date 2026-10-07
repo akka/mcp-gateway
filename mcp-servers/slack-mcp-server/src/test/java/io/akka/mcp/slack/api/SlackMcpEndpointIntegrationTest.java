@@ -4,6 +4,7 @@ import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.akka.mcp.slack.testsupport.FakeHostedSlackMcp;
 import io.akka.mcp.slack.testsupport.FakeSlackApi;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,10 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
 
     private static final FakeSlackApi SLACK = FakeSlackApi.start();
+    private static final FakeHostedSlackMcp HOSTED = FakeHostedSlackMcp.start();
 
     @AfterAll
     public static void stopFakeSlack() {
         SLACK.close();
+        HOSTED.close();
     }
 
     // The endpoint only admits the gateway service, which the test client is not, and it talks to the
@@ -34,12 +37,14 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
     @Override
     protected TestKit.Settings testKitSettings() {
         return TestKit.Settings.DEFAULT.withAclDisabled()
-                .withAdditionalConfig("slack.api-base-url = \"" + SLACK.url() + "\"");
+                .withAdditionalConfig("slack.api-base-url = \"" + SLACK.url() + "\"\n"
+                        + "slack.hosted-mcp-url = \"" + HOSTED.url() + "\"");
     }
 
     @BeforeEach
     public void resetFakeSlack() {
         SLACK.reset();
+        HOSTED.reset();
     }
 
     private JsonNode rpc(String bearer, Map<String, Object> request) throws Exception {
@@ -94,7 +99,7 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
 
         assertThat(tools).containsKeys("slack_list_channels", "slack_search_messages");
         tools.forEach((name, tool) -> {
-            if (!name.equals("slack_post_message")) {
+            if (!name.equals("slack_post_message") && !name.equals("slack_draft_message")) {
                 assertThat(tool.path("annotations").path("readOnlyHint").asBoolean(false))
                         .as("%s should be read-only", name).isTrue();
             }
@@ -248,5 +253,114 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
         var response = postMessage("user-token", Map.of("channel", "C0", "text", "hello team"));
 
         assertThat(isToolError(response)).isTrue();
+    }
+
+    private JsonNode draftMessage(String bearer, Map<String, Object> arguments) throws Exception {
+        return rpc(bearer, Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
+                "params", Map.of("name", "slack_draft_message", "arguments", arguments)));
+    }
+
+    @Test
+    public void draftMessage_isAdvertisedAsAWriteTool() throws Exception {
+        var tool = toolsByName().get("slack_draft_message");
+
+        assertThat(tool).isNotNull();
+        assertThat(tool.path("annotations").path("readOnlyHint").asBoolean(true)).isFalse();
+        assertThat(tool.path("inputSchema").path("required")).extracting(JsonNode::asText)
+                .containsExactlyInAnyOrder("channel", "text");
+    }
+
+    @Test
+    public void draftMessage_withoutATokenIsRefused() throws Exception {
+        var response = draftMessage(null, Map.of("channel", "C1", "text", "hi"));
+
+        assertThat(response.path("error").path("code").asInt()).isEqualTo(-32001);
+        assertThat(HOSTED.requests()).isEmpty();
+    }
+
+    @Test
+    public void draftMessage_asksTheHostedServerToDraftAsTheCaller_andSendsNothing() throws Exception {
+        var response = draftMessage("user-token",
+                Map.of("channel", "C123", "text", "hello team", "thread_ts", "1700000000.000200"));
+
+        assertThat(response.path("result").path("isError").asBoolean(true)).isFalse();
+        assertThat(resultText(response)).contains("https://app.slack.com/client/T1/C123");
+        var call = HOSTED.toolCall();
+        assertThat(call.authorization()).isEqualTo("Bearer user-token");
+        assertThat(call.sessionId()).isEqualTo(FakeHostedSlackMcp.SESSION_ID);
+        assertThat(call.body().path("params").path("name").asText()).isEqualTo("slack_send_message_draft");
+        var arguments = call.body().path("params").path("arguments");
+        assertThat(arguments.path("channel_id").asText()).isEqualTo("C123");
+        assertThat(arguments.path("message").asText()).isEqualTo("hello team");
+        assertThat(arguments.path("thread_ts").asText()).isEqualTo("1700000000.000200");
+        assertThat(SLACK.requests()).isEmpty();
+    }
+
+    @Test
+    public void draftMessage_withoutAThread_isATopLevelDraft() throws Exception {
+        draftMessage("user-token", Map.of("channel", "C123", "text", "hello team"));
+
+        assertThat(HOSTED.toolCall().body().path("params").path("arguments").has("thread_ts")).isFalse();
+    }
+
+    @Test
+    public void draftMessage_readsAnEventStreamAnswer() throws Exception {
+        HOSTED.answeringAsAnEventStream();
+
+        var response = draftMessage("user-token", Map.of("channel", "C123", "text", "hello team"));
+
+        assertThat(response.path("result").path("isError").asBoolean(true)).isFalse();
+        assertThat(resultText(response)).contains("https://app.slack.com/client/T1/C123");
+    }
+
+    @Test
+    public void draftMessage_whenADraftAlreadyExists_saysWhatToDo() throws Exception {
+        HOSTED.replyingToTheToolCallWith(FakeHostedSlackMcp.toolResult("draft_already_exists", true));
+
+        var response = draftMessage("user-token", Map.of("channel", "C123", "text", "hello team"));
+
+        assertThat(response.path("result").path("isError").asBoolean(false)).isTrue();
+        assertThat(resultText(response)).contains("already exists").contains("send or delete");
+    }
+
+    @Test
+    public void draftMessage_whenTheSlackAppHasNotEnabledMcp_tellsTheAdministrator() throws Exception {
+        HOSTED.replyingToTheToolCallWith("{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,"
+                + "\"message\":\"App is not enabled for Slack MCP server access.\"}}");
+
+        var response = draftMessage("user-token", Map.of("channel", "C123", "text", "hello team"));
+
+        assertThat(response.path("result").path("isError").asBoolean(false)).isTrue();
+        assertThat(resultText(response)).contains("administrator");
+    }
+
+    @Test
+    public void draftMessage_whenSlackRefusesTheToken_asksTheUserToReconnect() throws Exception {
+        HOSTED.answeringWithStatus(401);
+
+        var response = draftMessage("user-token", Map.of("channel", "C123", "text", "hello team"));
+
+        assertThat(response.path("result").path("isError").asBoolean(false)).isTrue();
+        assertThat(resultText(response)).contains("reconnect");
+    }
+
+    @Test
+    public void draftMessage_withAMissingArgument_isAToolErrorAndNeverReachesSlack() throws Exception {
+        var noText = draftMessage("user-token", Map.of("channel", "C123"));
+        var noChannel = draftMessage("user-token", Map.of("text", "hello team"));
+
+        assertThat(noText.path("result").path("isError").asBoolean(false)).isTrue();
+        assertThat(noChannel.path("result").path("isError").asBoolean(false)).isTrue();
+        assertThat(HOSTED.requests()).isEmpty();
+    }
+
+    @Test
+    public void draftMessage_toAnExternalChannel_isStillDrafted() throws Exception {
+        SLACK.replyingWith("{\"ok\":true,\"channel\":{\"id\":\"C9\",\"name\":\"external-acme\",\"is_ext_shared\":true}}");
+
+        var response = draftMessage("user-token", Map.of("channel", "C9", "text", "hello partner"));
+
+        assertThat(response.path("result").path("isError").asBoolean(true)).isFalse();
+        assertThat(HOSTED.toolCall().body().path("params").path("arguments").path("channel_id").asText()).isEqualTo("C9");
     }
 }
