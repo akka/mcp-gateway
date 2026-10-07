@@ -23,7 +23,7 @@ public final class FakeMcpServer implements AutoCloseable {
 
     public record AdvertisedTool(String name, boolean readOnly) {}
 
-    public record ReceivedCall(String tool, String authorization) {}
+    public record ReceivedCall(String tool, String authorization, String token) {}
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -128,7 +128,8 @@ public final class FakeMcpServer implements AutoCloseable {
 
     private JsonNode callResult(JsonNode params, HttpExchange exchange) {
         var tool = params.path("name").asText();
-        calls.add(new ReceivedCall(tool, exchange.getRequestHeaders().getFirst("Authorization")));
+        calls.add(new ReceivedCall(tool, exchange.getRequestHeaders().getFirst("Authorization"),
+                exchange.getRequestHeaders().getFirst("Token")));
         var result = MAPPER.createObjectNode();
         result.putArray("content").addObject().put("type", "text").put("text", "handled " + tool);
         result.put("isError", false);

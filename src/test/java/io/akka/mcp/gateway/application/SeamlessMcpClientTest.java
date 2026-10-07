@@ -322,4 +322,31 @@ public class SeamlessMcpClientTest {
         assertThat(result.isError()).isTrue();
         assertThat(result.text()).contains("Seamless.AI is temporarily unavailable");
     }
+
+    // ---- real HTTP wiring (buildClient) ----
+
+    /**
+     * Every other test in this file goes through the {@code clientFactory} test seam, which
+     * bypasses {@link SeamlessMcpClient#buildClient} entirely — so none of them would catch a
+     * regression in how it actually authenticates upstream. This one uses the public constructor
+     * against a real local HTTP server instead, to prove Seamless's documented, non-OAuth auth
+     * method (a {@code Token} header, not {@code Authorization: Bearer}) really is what goes out
+     * on the wire.
+     */
+    @Test
+    public void buildClient_sendsTheApiKeyAsATokenHeader_notAuthorizationBearer() throws Exception {
+        try (var server = io.akka.mcp.gateway.testsupport.FakeMcpServer.start()
+                .advertising(new io.akka.mcp.gateway.testsupport.FakeMcpServer.AdvertisedTool("search_contacts", true))) {
+            var client = new SeamlessMcpClient(server.url() + "/mcp", API_KEY, OKTA_APP_ID);
+
+            var result = client.callTool(USER, "Seamless_search_contacts", Map.of());
+
+            assertThat(result.isError()).isFalse();
+            var calls = server.callsTo("search_contacts");
+            assertThat(calls).singleElement().satisfies(call -> {
+                assertThat(call.token()).isEqualTo(API_KEY);
+                assertThat(call.authorization()).isNull();
+            });
+        }
+    }
 }
