@@ -187,7 +187,8 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
 
             assertThat(isToolError(response)).as(channel).isTrue();
             assertThat(postsToSlack()).as(channel).isEmpty();
-            assertThat(resultText(response)).as(channel).contains("hello customer").doesNotContain(MARKER.trim());
+            assertThat(resultText(response)).as(channel).contains("hello customer", "slack_draft_message")
+                    .doesNotContain(MARKER.trim());
             assertThat(SLACK.requests()).as(channel).singleElement()
                     .satisfies(r -> assertThat(r.authorization()).isEqualTo("Bearer user-token"));
         }
@@ -214,6 +215,7 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
 
         assertThat(isToolError(response)).isTrue();
         assertThat(postsToSlack()).isEmpty();
+        assertThat(resultText(response)).contains("slack_draft_message", "thread_ts=1700000000.000200");
     }
 
     @Test

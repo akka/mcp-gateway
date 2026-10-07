@@ -112,7 +112,7 @@ working; new deployments should not set these.
 - `GOOGLE_CALENDAR_MCP_URL` *(optional — defaults to Google's hosted server)*
 - `GOOGLE_CALENDAR_OKTA_APP_ID` *(optional — defaults to `GOOGLE_DRIVE_OKTA_APP_ID`)*
 
-**Slack** — channels and messages. Posts start with 🤖 so readers can tell an assistant wrote them, unless the user explicitly asks the assistant to leave it off. Channels shared outside the organisation (Slack Connect, or named `external-...`) are never posted to, with or without the marker: the assistant hands the text back for a person to review and send, and when the gateway cannot tell whether a channel is shared, nothing is posted.
+**Slack** — channels and messages. Posts start with 🤖 so readers can tell an assistant wrote them, unless the user explicitly asks the assistant to leave it off. Channels shared outside the organisation (Slack Connect, or named `external-...`) are never posted to, with or without the marker: the assistant saves the text as a draft in the user's Slack for a person to review and send, and when the gateway cannot tell whether a channel is shared, nothing is posted.
 - `SLACK_MCP_URL`
 - `SLACK_CLIENT_ID`
 - `SLACK_CLIENT_SECRET`

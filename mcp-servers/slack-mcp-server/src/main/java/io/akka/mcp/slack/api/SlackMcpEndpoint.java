@@ -231,7 +231,7 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                     String threadTs = str(args, "thread_ts");
                     boolean markAsAssistant = !boolArg(args, "omit_assistant_marker");
                     var target = channelOrNotPosted(slack, channel);
-                    if (target.external()) throw new NotPostedException(externalChannelNotPosted(target, messageText));
+                    if (target.external()) throw new NotPostedException(externalChannelNotPosted(target, messageText, threadTs));
                     yield MAPPER.writeValueAsString(slack.postMessage(channel, messageText, threadTs, markAsAssistant));
                 }
                 case "slack_draft_message" -> {
@@ -275,15 +275,19 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
             return slack.channelInfo(channel);
         } catch (SlackApiClient.SlackApiException e) {
             throw new NotPostedException("Not posted: could not check whether this conversation is shared outside Akka ("
-                    + e.slackError() + "). Nothing was sent.");
+                    + e.slackError() + "). Nothing was sent. To let the user review the message, save it with "
+                    + "slack_draft_message instead.");
         }
     }
 
-    private static String externalChannelNotPosted(SlackApiClient.Channel target, String text) {
+    private static String externalChannelNotPosted(SlackApiClient.Channel target, String text, String threadTs) {
         var where = target.name().isBlank() ? "This conversation" : "#" + target.name();
+        var thread = threadTs == null || threadTs.isBlank() ? "" : " and thread_ts=" + threadTs;
         return "Not posted: " + where + " is shared outside Akka, and an assistant never posts there. A person reviews "
-                + "and sends messages to external channels, without the assistant marker. Give the user this message "
-                + "to review and send themselves:\n\n" + text;
+                + "and sends messages to external channels, without the assistant marker. Save it as a draft for the "
+                + "user by calling slack_draft_message with the same channel" + thread + " and this text, then tell "
+                + "the user to review and send it from Drafts & Sent. If the draft cannot be saved, give the user "
+                + "this message to review and send themselves:\n\n" + text;
     }
 
     // -- tool schema helpers --
