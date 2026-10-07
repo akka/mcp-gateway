@@ -30,6 +30,7 @@
         .tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 500; background: #e8f0fe; color: #1a56db; border: 1px solid #c3d5fb; }
         .dir-req { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; background: #e8f4fd; color: #0c5460; border: 1px solid #b8daff; }
         .dir-resp { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; background: #e8fdf0; color: #155724; border: 1px solid #b8dfc8; }
+        .dir-policy { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; background: #fff3e0; color: #b45309; border: 1px solid #fcd9a0; }
         .dir-rejected { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; background: #fdecea; color: #922; border: 1px solid #f5c6c6; }
         .escalation { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 500; }
         .escalation-none { background: #f0f0f0; color: #888; }
@@ -212,11 +213,7 @@
                 var escalation = (r.escalationStatus && r.escalationStatus.length > 0)
                     ? '<span class="escalation escalation-set">' + esc(r.escalationStatus) + '</span>'
                     : '<span class="escalation escalation-none">none</span>';
-                var dir = r.direction === 'resp'
-                    ? '<span class="dir-resp">resp</span>'
-                    : r.direction === 'write-rejected'
-                    ? '<span class="dir-rejected">write-rejected</span>'
-                    : '<span class="dir-req">req</span>';
+                var dir = dirBadge(r.direction);
                 html += '<tr>' +
                     '<td class="ts">' + ts + '</td>' +
                     '<td>' + dir + '</td>' +
@@ -233,14 +230,17 @@
             window._rows = rows;
         }
 
+        function dirBadge(direction) {
+            if (direction === 'resp') return '<span class="dir-resp">resp</span>';
+            if (direction === 'write-rejected') return '<span class="dir-rejected">write-rejected</span>';
+            if (direction === 'policy-change') return '<span class="dir-policy">policy-change</span>';
+            return '<span class="dir-req">req</span>';
+        }
+
         function showDetail(i) {
             var r = window._rows[i];
             var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
-            var dir = r.direction === 'resp'
-                ? '<span class="dir-resp">resp</span>'
-                : r.direction === 'write-rejected'
-                ? '<span class="dir-rejected">write-rejected</span>'
-                : '<span class="dir-req">req</span>';
+            var dir = dirBadge(r.direction);
             var escalation = (r.escalationStatus && r.escalationStatus.length > 0)
                 ? '<span class="escalation escalation-set">' + esc(r.escalationStatus) + '</span>'
                 : '<span class="escalation escalation-none">none</span>';

@@ -11,27 +11,14 @@ import akka.javasdk.http.HttpClientProvider;
 import akka.javasdk.http.HttpResponses;
 import akka.javasdk.client.ComponentClient;
 import com.typesafe.config.Config;
-import io.akka.mcp.gateway.application.AkkaSalesforceMcpClient;
-import io.akka.mcp.gateway.application.GmailMcpClient;
-import io.akka.mcp.gateway.application.GoogleCalendarMcpClient;
-import io.akka.mcp.gateway.application.WorkspaceCalendarMcpClient;
-import io.akka.mcp.gateway.application.WorkspaceDocsMcpClient;
-import io.akka.mcp.gateway.application.WorkspaceDriveMcpClient;
-import io.akka.mcp.gateway.application.WorkspaceGmailMcpClient;
-import io.akka.mcp.gateway.application.GoogleDriveMcpClient;
-import io.akka.mcp.gateway.application.GroundcoverMcpClient;
 import io.akka.mcp.gateway.application.HowToMcpClient;
-import io.akka.mcp.gateway.application.HubspotMcpClient;
+import io.akka.mcp.gateway.application.McpClients;
 import io.akka.mcp.gateway.application.McpInteractionEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
-import io.akka.mcp.gateway.application.OktaMcpClient;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
-import io.akka.mcp.gateway.application.ReoMcpClient;
-import io.akka.mcp.gateway.application.SalesforceMcpClient;
-import io.akka.mcp.gateway.application.SlackMcpClient;
-import io.akka.mcp.gateway.application.ZohoMcpClient;
 import io.akka.mcp.gateway.domain.McpConfig;
 import io.akka.mcp.gateway.domain.UserSession;
+import io.akka.mcp.gateway.domain.WriteAccess;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,29 +60,34 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
     // later we have to add some more dynamics here, who sees which client or so
     public AkkaMcpGateway(ComponentClient componentClient, HttpClientProvider httpClientProvider, Config config) {
         super(componentClient, config);
-        var serviceClients = List.<RemoteMcpClient>of(
-                new ZohoMcpClient(componentClient, config.getString("zoho.mcp-url"), config.getString("zoho.okta-app-id")),
-                new GoogleDriveMcpClient(componentClient, config.getString("google-drive.mcp-url"), config.getString("google-drive.okta-app-id")),
-                new WorkspaceDriveMcpClient(componentClient, config.getString("google-workspace.drive.mcp-url"), config.getString("google-workspace.okta-app-id")),
-                new WorkspaceDocsMcpClient(componentClient, config.getString("google-workspace.docs.mcp-url"), config.getString("google-workspace.okta-app-id")),
-                new WorkspaceGmailMcpClient(componentClient, config.getString("google-workspace.gmail.mcp-url"), config.getString("google-workspace.okta-app-id")),
-                new WorkspaceCalendarMcpClient(componentClient, config.getString("google-workspace.calendar.mcp-url"), config.getString("google-workspace.okta-app-id")),
-                new SalesforceMcpClient(componentClient, config.getString("salesforce.mcp-url"), config.getString("salesforce.okta-app-id")),
-                new AkkaSalesforceMcpClient(componentClient, httpClientProvider, config.getString("akka-salesforce.mcp-url"), config.getString("akka-salesforce.okta-app-id")),
-                new ReoMcpClient(componentClient, config.getString("reo.mcp-url"), config.getString("reo.okta-app-id")),
-                new GroundcoverMcpClient(componentClient, config.getString("groundcover.mcp-url"), config.getString("groundcover.okta-app-id")),
-                new SlackMcpClient(componentClient, httpClientProvider, config.getString("slack.mcp-url"), config.getString("slack.okta-app-id")),
-                new GmailMcpClient(componentClient, config.getString("gmail.mcp-url"), config.getString("gmail.okta-app-id")),
-                new GoogleCalendarMcpClient(componentClient, config.getString("google-calendar.mcp-url"), config.getString("google-calendar.okta-app-id")),
-                new HubspotMcpClient(componentClient, config.getString("hubspot.mcp-url"), config.getString("hubspot.okta-app-id")),
-                new OktaMcpClient(config.getString("okta-admin.mcp-url"), httpClientProvider, config.getString("okta-admin.okta-app-id"))
-        );
+        var serviceClients = McpClients.serviceClients(componentClient, httpClientProvider, config);
         this.clients = new ArrayList<>(serviceClients);
         this.clients.add(new HowToMcpClient(
                 config.getString("mcp.base-url"),
                 config.getString("support.email"),
                 config.getString("support.slack-channel"),
                 serviceClients));
+    }
+
+    /** @param writeAllowed whether the calling user may run write tools on this MCP (see {@link WriteAccess#permits}) */
+    public record McpAccessEntry(String mcpId, String mcpName, boolean writeAllowed) {}
+    public record McpAccessResponse(List<McpAccessEntry> accessible, List<McpAccessEntry> inaccessible) {}
+
+    @Get("/access")
+    public HttpResponse mcpAccess() {
+        var session = requireSession();
+        if (session == null) return unauthorized();
+        var writeAccess = currentWriteAccess();
+        var accessible = new ArrayList<McpAccessEntry>();
+        var inaccessible = new ArrayList<McpAccessEntry>();
+        for (var client : clients) {
+            if (client.isLocalGuidance()) continue;
+            var hasAccess = appAssigned(session, client);
+            var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName(),
+                    hasAccess && writeAccess.permits(client.getMcpId(), session));
+            if (hasAccess) accessible.add(entry); else inaccessible.add(entry);
+        }
+        return HttpResponses.ok(new McpAccessResponse(accessible, inaccessible));
     }
 
     /**
@@ -109,24 +101,6 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
      *
      * Handled methods: initialize, notifications/initialized, tools/list, tools/call, ping
      */
-    public record McpAccessEntry(String mcpId, String mcpName) {}
-    public record McpAccessResponse(List<McpAccessEntry> accessible, List<McpAccessEntry> inaccessible) {}
-
-    @Get("/access")
-    public HttpResponse mcpAccess() {
-        var session = requireSession();
-        if (session == null) return unauthorized();
-        var accessible = new ArrayList<McpAccessEntry>();
-        var inaccessible = new ArrayList<McpAccessEntry>();
-        for (var client : clients) {
-            if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
-            var hasAccess = appAssigned(session, client);
-            var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName());
-            if (hasAccess) accessible.add(entry); else inaccessible.add(entry);
-        }
-        return HttpResponses.ok(new McpAccessResponse(accessible, inaccessible));
-    }
-
     @Post("")
     public HttpResponse handleMcp(HttpEntity.Strict rawBody) {
         var session = requireMcpSession();
@@ -188,6 +162,14 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         return responseJson(id, result);
     }
 
+    /**
+     * Lists every tool of every service the user's Okta apps allow, whatever their connection state,
+     * role or the write policy. MCP clients cache this list when they connect and Claude Code ignores
+     * {@code notifications/tools/list_changed}, so anything that can change mid-session must never decide
+     * what is listed: a connect, a role change or an admin enabling writes would otherwise leave clients
+     * with a stale list until they restart. Calls that cannot be made are refused with an explanation
+     * instead (see {@link #handleToolsCall}). A service nobody has connected yet has nothing cached to list.
+     */
     private String handleToolsList(Long id, UserSession session) {
         String userId = session.email();
         log.info("MCP tools/list: aggregating from {} clients", clients.size());
@@ -197,7 +179,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         //    never fail or block — this guarantees the list is never empty and that
         //    `howto_refresh_tools` is always present, even if every upstream is down.
         for (var client : clients) {
-            if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) {
+            if (client.isLocalGuidance()) {
                 addLocalTools(client, userId, allTools);
             }
         }
@@ -208,7 +190,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         //    rather than aborting the whole response.
         Map<RemoteMcpClient, Future<List<RemoteMcpClient.ToolEntry>>> pending = new LinkedHashMap<>();
         for (var client : clients) {
-            if (client.getMcpId().equals(HowToMcpClient.MCP_ID)) continue;
+            if (client.isLocalGuidance()) continue;
             var clientName = client.getClass().getSimpleName();
             if (!appAssigned(session, client)) {
                 log.info("MCP tools/list: {} app not assigned to user {} — hiding tools", clientName, userId);
@@ -359,15 +341,44 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         var toolMeta = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                 .method(McpRegistryEntity::findTool)
                 .invoke(toolName);
-        boolean isWrite = toolMeta
+        boolean isLocalGuidance = client.isLocalGuidance();
+        boolean isWrite = !isLocalGuidance && toolMeta
                 .map(McpConfig.ToolMeta::isWrite)
                 .orElse(true); // unknown → assume write (safe default)
         log.info("MCP tools/call: name={} opType={}", toolName, isWrite ? "write" : "read");
 
 
+        // A read-only MCP refuses every write tool regardless of the caller's groups. Checked
+        // before the group guard so the error names the real reason ("connected read-only")
+        // instead of blaming the user's permissions.
+        if (isWrite && !currentWriteAccess().connectorAllows(client.getMcpId())) {
+            boolean classified = toolMeta.isPresent();
+            log.warn("MCP tools/call: write rejected for user {}: {} is read-only, tool={}, classified={}",
+                    userEmail, client.getMcpName(), toolName, classified);
+            componentClient
+                    .forEventSourcedEntity(UUID.randomUUID().toString())
+                    .method(McpInteractionEntity::record)
+                    .invoke(new McpInteractionEntity.RecordCommand(
+                            userEmail, client.getMcpId(), toolName,
+                            Map.of("reason", classified ? "mcp-read-only" : "tool-unclassified"),
+                            "write-rejected"));
+            String message = classified
+                    ? client.getMcpName() + " is connected read-only through the gateway; "
+                            + "write tools such as `" + toolName + "` are not permitted."
+                    : "`" + toolName + "` has not been classified as read or write yet, so the gateway "
+                            + "treats it as a write, and " + client.getMcpName() + " is read-only through the gateway. "
+                            + "Refresh your tool list (see `howto_refresh_tools`) and try again.";
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("content", List.of(Map.of("type", "text", "text", message)));
+            resp.put("isError", true);
+            return responseJson(id, resp);
+        }
+
         boolean isRead = !isWrite;
         String label = isRead ? "Read": "Write";
-        boolean canInteract = session.canInteract(isWrite, readerGroup, writerGroup);
+        boolean canInteract = isLocalGuidance
+                ? session.canRead(readerGroup) || session.canWrite(writerGroup)
+                : session.canInteract(isWrite, readerGroup, writerGroup);
         if (!canInteract) {
             log.warn("MCP tools/call: {} access rejected for user {}: {}, read={}, write={}", label, userEmail, toolName, session.canRead(readerGroup), session.canWrite(writerGroup));
             componentClient

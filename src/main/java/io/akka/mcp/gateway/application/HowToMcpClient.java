@@ -250,6 +250,9 @@ public class HowToMcpClient implements RemoteMcpClient {
     public String getRequiredOktaAppId() { return ""; }
 
     @Override
+    public boolean isLocalGuidance() { return true; }
+
+    @Override
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(
                 "Overview of the MCP Gateway and all available integrations.",

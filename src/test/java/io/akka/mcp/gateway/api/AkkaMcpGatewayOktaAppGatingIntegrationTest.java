@@ -3,17 +3,15 @@ package io.akka.mcp.gateway.api;
 import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
-import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
+import io.akka.mcp.gateway.testsupport.GatewayFixtures;
 import io.akka.mcp.gateway.domain.UserSession;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -35,17 +33,14 @@ public class AkkaMcpGatewayOktaAppGatingIntegrationTest extends TestKitSupport {
         // okta-admin.okta-app-id has no checked-in default; pin it so app-gating is deterministic.
         return TestKit.Settings.DEFAULT.withAdditionalConfig("""
                 okta-admin.okta-app-id = "%s"
+                okta.groups.reader = "mcp-gateway-reader"
+                okta.groups.writer = "mcp-gateway-writer"
                 """.formatted(OKTA_APP_ID));
     }
 
-    /** An MCP client's Bearer token — what {@code POST /mcp} actually accepts. */
+    /** An MCP client's Bearer token, what {@code POST /mcp} actually accepts. */
     private String createSession(List<UserSession.App> apps) {
-        var token = UUID.randomUUID().toString();
-        componentClient.forKeyValueEntity(token)
-                .method(McpAccessTokenEntity::create)
-                .invoke(new McpAccessTokenEntity.CreateCommand(
-                        "user@lightbend.com", "User", List.of(), apps, "client-1", Instant.now().plusSeconds(3600)));
-        return token;
+        return GatewayFixtures.mcpToken(componentClient, "user@lightbend.com", List.of(), apps);
     }
 
     private void seedCachedOktaTool() {
@@ -111,5 +106,28 @@ public class AkkaMcpGatewayOktaAppGatingIntegrationTest extends TestKitSupport {
         // Denied the same way as "no client can handle this tool" — the reader never learns
         // the tool exists behind an unassigned app.
         assertThat(json.path("error").path("message").asText()).contains("No MCP client can handle tool");
+    }
+
+    /** A system the user has no access to must not show a write capability on the dashboard. */
+    @Test
+    public void mcpAccess_doesNotReportWriteForASystemTheUserHasNoAccessTo() {
+        var before = GatewayFixtures.writeEnabledMcpIds(componentClient);
+        try {
+            GatewayFixtures.enableWritesOn(componentClient, List.of(MCP_ID));
+            var session = GatewayFixtures.browserSession(
+                    componentClient, "writer@lightbend.com", List.of("mcp-gateway-reader", "mcp-gateway-writer"));
+
+            var access = httpClient.GET("/mcp/access")
+                    .addHeader("Cookie", "SESSION=" + session)
+                    .responseBodyAs(AkkaMcpGateway.McpAccessResponse.class)
+                    .invoke().body();
+
+            assertThat(access.inaccessible()).anySatisfy(e -> {
+                assertThat(e.mcpId()).isEqualTo(MCP_ID);
+                assertThat(e.writeAllowed()).isFalse();
+            });
+        } finally {
+            GatewayFixtures.enableWritesOn(componentClient, before);
+        }
     }
 }

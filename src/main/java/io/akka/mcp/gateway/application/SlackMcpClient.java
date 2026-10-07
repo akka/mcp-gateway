@@ -58,7 +58,7 @@ public class SlackMcpClient implements RemoteMcpClient {
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(
                 "Step-by-step instructions for connecting your Slack workspace to the MCP Gateway.",
-                "Search messages, list channels, read conversations",
+                "Search messages, list channels, read conversations, post messages (writer role)",
                 """
                 # How to Connect Slack
 
@@ -87,6 +87,8 @@ public class SlackMcpClient implements RemoteMcpClient {
                 - Search messages across channels
                 - List channels and members
                 - Read conversation history
+                - Post messages and thread replies (needs the writer role; if you connected Slack before \
+                posting was added, disconnect and reconnect it once)
 
                 ## Troubleshooting
                 - If tools are missing, verify that the Slack MCP URL is configured by your admin.

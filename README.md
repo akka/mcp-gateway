@@ -155,7 +155,7 @@ The group names below are the conventional ones; the operator maps them to Okta 
 | Group | What it grants |
 |---|---|
 | `mcp-gateway-reader` | Run tools that only read data — searching tickets, looking up records, reading files. |
-| `mcp-gateway-writer` | Run tools that change data — creating a ticket, sending a reply, updating a record. |
+| `mcp-gateway-writer` | Run tools that change data (posting a message, creating a calendar event, drafting an email) on the systems where writes are enabled (see [Systems decide whether writes are possible](#systems-decide-whether-writes-are-possible)). |
 | `mcp-gateway-admin` | View the full interaction log for every user, flag entries for escalation, and open the Okta account-status page. |
 
 Reader and writer are independent, not tiered. If you only hold `mcp-gateway-reader`, a request to create or update something is refused. Holding neither means you can sign in and see your own permissions page, but every tool call is refused.
@@ -178,6 +178,22 @@ Every system is tied to an Okta application. Being assigned that application is 
 | Okta admin lookups | Okta MCP Admin |
 
 Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
+
+### Systems decide whether writes are possible
+
+Being in the writer group is necessary but not sufficient. A system must also have writes enabled; every other system is read-only for everyone, writers included. A write tool on a read-only system is refused with a message that says so, but it still appears in the tool list (see [Every tool is always listed](#every-tool-is-always-listed)). The dashboard marks each system **Read-only** or **Read** and **Write** for you specifically, so a reader never sees a **Write** badge.
+
+Admins choose the enabled systems on the **Write access** page (admin menu on the dashboard). A change is applied by the gateway immediately: disabling a system stops writes on it for everyone, and enabling one lets users in the writer group use it straight away. It is recorded in the Interactions log as a `policy-change` entry with who changed what, so it can be reviewed and flagged like any other entry. Nothing is enabled until an admin saves a selection, so a new deployment is read-only everywhere. If the saved selection cannot be read, the gateway refuses all writes.
+
+Enabling a system is a deliberate decision: review the OAuth scopes users grant and the tools the downstream server exposes first. Every system asks each user for the same permissions whatever their role, so enabling one needs no reconnect, and the write gate is what stops a reader writing. Turning writes off does not revoke tokens people already hold, it only stops the gateway using them.
+
+### Every tool is always listed
+
+The tool list does not depend on your role, on which systems have writes enabled, or, once anyone has connected a system, on whether you have. A tool you cannot use yet is still listed, and calling it returns an error saying what is wrong: not connected, read-only through the gateway, or write access not permitted.
+
+This is deliberate. Assistants fetch the tool list once, when they connect, and the main ones ignore "tool list changed" notifications, so a list that varied would stay stale until the assistant was restarted. The one thing that shapes it is your Okta application assignments, fixed at sign-in. For a system nobody has connected yet there is nothing to list, so its tools appear after the first connection (restart the assistant, or have it call `howto_refresh_tools`).
+
+`AkkaMcpGatewayWriteGateIntegrationTest` pins this behaviour.
 
 ### Connecting is still per-person
 

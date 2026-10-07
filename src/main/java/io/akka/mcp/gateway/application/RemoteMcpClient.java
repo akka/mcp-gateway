@@ -13,6 +13,13 @@ public interface RemoteMcpClient {
     /** Okta appInstanceId required to access this MCP. Must be implemented by each client. */
     String getRequiredOktaAppId();
 
+    /**
+     * Whether this client's tools are local guidance rather than calls to a downstream system. Such
+     * tools never reach an upstream, so the write gate does not apply to them. Only the how-to client
+     * is; a connector must never override this.
+     */
+    default boolean isLocalGuidance() { return false; }
+
     boolean isConnected(String userId);
     boolean canHandle(String toolName);
 
