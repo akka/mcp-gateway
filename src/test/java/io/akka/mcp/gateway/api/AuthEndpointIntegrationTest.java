@@ -36,6 +36,17 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
+    public void legacyInitiate_sendsCachedOldLoginPagesToTheEmailFreeSignIn() {
+        var response = httpClient.POST("/auth/initiate")
+                .withRequestBody(new AuthEndpoint.LegacyInitiateRequest("anyone@example.com"))
+                .responseBodyAs(AuthEndpoint.LegacyInitiateResponse.class)
+                .invoke();
+
+        assertThat(response.status().isSuccess()).isTrue();
+        assertThat(response.body().redirectUrl()).isEqualTo("/auth/start");
+    }
+
+    @Test
     public void dashboard_withoutSession_redirectsToLoginWithReturnPath() {
         var response = httpClient.GET("/").invoke();
 
