@@ -143,7 +143,9 @@ working; new deployments should not set these.
 
 The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_MCP_URL` and `OKTA_ADMIN_OKTA_APP_ID`.
 
-A few settings are optional across the board: `OKTA_JWKS_URI` overrides where Okta sign-in keys are fetched from, and `MCP_PROXY_OKTA_API_TOKEN` enables the Okta account-status page.
+`OKTA_JWKS_URI` is optional and overrides where Okta sign-in keys are fetched from.
+
+`MCP_PROXY_OKTA_API_TOKEN` is an Okta API token that the gateway uses to look up each user's assigned applications and groups, and for the Okta account-status page. Treat it as required: without it no user is seen as having any application, so every app-gated system is unavailable. The admin role behind the token must be able to read users, groups and applications. If Okta refuses the applications lookup, the gateway logs an error that names this token.
 
 ## Seeing what happened
 
@@ -182,6 +184,8 @@ Every system is tied to an Okta application. Being assigned that application is 
 | Groundcover | Groundcover |
 | Seamless.AI | Seamless.AI |
 | Okta admin lookups | Okta MCP Admin |
+
+An application counts as assigned when it is active and assigned to you, whether or not its icon is shown on your Okta dashboard. That lets an application exist only to give the gateway access to a system.
 
 Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
 
