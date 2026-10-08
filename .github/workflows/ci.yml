@@ -23,7 +23,13 @@ jobs:
         uses: akka/github-actions-scripts/setup_global_resolver@main
 
       - name: Compile
-        run: mvn compile --batch-mode
+        run: mvn compile --batch-mode # also runs Checkstyle (bound to the validate phase)
 
       - name: Test
         run: mvn test --batch-mode
+
+      - name: Lint mcp-servers
+        run: |
+          mvn -f mcp-servers/akka-salesforce-mcp-server/pom.xml checkstyle:check --batch-mode
+          mvn -f mcp-servers/okta-mcp-server/pom.xml checkstyle:check --batch-mode
+          mvn -f mcp-servers/slack-mcp-server/pom.xml checkstyle:check --batch-mode

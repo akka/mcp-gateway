@@ -8,14 +8,11 @@ import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.annotations.http.Post;
 import akka.javasdk.http.AbstractHttpEndpoint;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import io.akka.mcp.slack.application.SlackApiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -148,12 +145,15 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                         + "if the user connected before this scope was requested they need to reconnect.",
                 props(
                         param("channel", "string",
-                                "Channel/DM/group id (e.g. C12345, D12345, G12345). Use slack_list_channels or slack_search_messages to find it; @name and #name are not accepted."),
+                                "Channel/DM/group id (e.g. C12345, D12345, G12345). Use slack_list_channels or "
+                                        + "slack_search_messages to find it; @name and #name are not accepted."),
                         param("text", "string", "Message body (Slack mrkdwn supported)."),
                         param("thread_ts", "string",
-                                "Optional parent message timestamp (e.g. 1234567890.123456). Omit to post as a new top-level message."),
+                                "Optional parent message timestamp (e.g. 1234567890.123456). Omit to post as a new "
+                                        + "top-level message."),
                         param("omit_assistant_marker", "boolean",
-                                "Leave unset. Set to true only when the user has explicitly asked for this message not to be marked as posted by an assistant.")),
+                                "Leave unset. Set to true only when the user has explicitly asked for this message "
+                                        + "not to be marked as posted by an assistant.")),
                 List.of("channel", "text")));
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -345,7 +345,13 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
     private static Long extractId(Map<String, Object> req) {
         Object raw = req.get("id");
         if (raw instanceof Number n) return n.longValue();
-        if (raw instanceof String s) { try { return Long.parseLong(s); } catch (NumberFormatException ignored) {} }
+        if (raw instanceof String s) {
+            try {
+                return Long.parseLong(s);
+            } catch (NumberFormatException ignored) {
+                // fall through to null
+            }
+        }
         return null;
     }
 
@@ -354,8 +360,11 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
         resp.put("jsonrpc", "2.0");
         resp.put("id", id);
         resp.put("result", result);
-        try { return MAPPER.writeValueAsString(resp); }
-        catch (Exception e) { return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}"; }
+        try {
+            return MAPPER.writeValueAsString(resp);
+        } catch (Exception e) {
+            return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}";
+        }
     }
 
     private static String errorJson(Long id, int code, String message) {
@@ -363,8 +372,11 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
         resp.put("jsonrpc", "2.0");
         resp.put("id", id);
         resp.put("error", Map.of("code", code, "message", message));
-        try { return MAPPER.writeValueAsString(resp); }
-        catch (Exception e) { return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}"; }
+        try {
+            return MAPPER.writeValueAsString(resp);
+        } catch (Exception e) {
+            return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}";
+        }
     }
 
     private static HttpResponse jsonResponse(String json) {

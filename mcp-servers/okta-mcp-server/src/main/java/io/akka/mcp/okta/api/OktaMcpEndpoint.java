@@ -8,13 +8,10 @@ import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.annotations.http.Post;
 import akka.javasdk.http.AbstractHttpEndpoint;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.typesafe.config.Config;
 import io.akka.mcp.okta.application.OktaApiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -272,7 +269,13 @@ public class OktaMcpEndpoint extends AbstractHttpEndpoint {
     private static Long extractId(Map<String, Object> req) {
         Object raw = req.get("id");
         if (raw instanceof Number n) return n.longValue();
-        if (raw instanceof String s) { try { return Long.parseLong(s); } catch (NumberFormatException ignored) {} }
+        if (raw instanceof String s) {
+            try {
+                return Long.parseLong(s);
+            } catch (NumberFormatException ignored) {
+                // fall through to null
+            }
+        }
         return null;
     }
 
@@ -281,8 +284,11 @@ public class OktaMcpEndpoint extends AbstractHttpEndpoint {
         resp.put("jsonrpc", "2.0");
         resp.put("id", id);
         resp.put("result", result);
-        try { return MAPPER.writeValueAsString(resp); }
-        catch (Exception e) { return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}"; }
+        try {
+            return MAPPER.writeValueAsString(resp);
+        } catch (Exception e) {
+            return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}";
+        }
     }
 
     private static String errorJson(Long id, int code, String message) {
@@ -290,8 +296,11 @@ public class OktaMcpEndpoint extends AbstractHttpEndpoint {
         resp.put("jsonrpc", "2.0");
         resp.put("id", id);
         resp.put("error", Map.of("code", code, "message", message));
-        try { return MAPPER.writeValueAsString(resp); }
-        catch (Exception e) { return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}"; }
+        try {
+            return MAPPER.writeValueAsString(resp);
+        } catch (Exception e) {
+            return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}";
+        }
     }
 
     private static HttpResponse jsonResponse(String json) {

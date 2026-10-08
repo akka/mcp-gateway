@@ -16,7 +16,8 @@ public class GoogleDriveOAuthEndpoint extends AbstractStaticOAuthEndpoint {
 
     private static final String GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
     private static final String GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
-    private static final String GOOGLE_DRIVE_SCOPE = "openid email https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file";
+    private static final String GOOGLE_DRIVE_SCOPE = "openid email https://www.googleapis.com/auth/drive "
+            + "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file";
 
     private final String googleDriveRedirectUri;
     private final String googleDriveMcpUrl;
