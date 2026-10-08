@@ -54,7 +54,8 @@ public class McpInteractionsByMcpView extends View {
         }
     }
 
-    @Query("SELECT * AS interactions, total_count() AS totalCount FROM mcp_interactions_by_mcp WHERE mcpId = :mcpId ORDER BY timestamp DESC OFFSET :offset LIMIT :pageSize")
+    @Query("SELECT * AS interactions, total_count() AS totalCount FROM mcp_interactions_by_mcp WHERE mcpId = :mcpId "
+            + "ORDER BY timestamp DESC OFFSET :offset LIMIT :pageSize")
     public QueryEffect<McpInteractionEntries> getByMcp(McpPageRequest request) {
         return queryResult();
     }

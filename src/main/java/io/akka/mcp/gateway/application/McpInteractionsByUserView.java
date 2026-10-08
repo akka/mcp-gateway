@@ -56,7 +56,8 @@ public class McpInteractionsByUserView extends View {
         }
     }
 
-    @Query("SELECT * AS interactions, total_count() AS totalCount FROM mcp_interactions_by_user WHERE userId = :userId ORDER BY timestamp DESC OFFSET :offset LIMIT :pageSize")
+    @Query("SELECT * AS interactions, total_count() AS totalCount FROM mcp_interactions_by_user WHERE userId = :userId "
+            + "ORDER BY timestamp DESC OFFSET :offset LIMIT :pageSize")
     public QueryEffect<McpInteractionEntries> getByUser(UserPageRequest request) {
         return queryResult();
     }

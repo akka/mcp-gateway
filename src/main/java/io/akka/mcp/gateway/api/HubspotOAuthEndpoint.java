@@ -48,7 +48,11 @@ public class HubspotOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     @Override protected String getAuthorizationEndpoint() { return HUBSPOT_AUTH_ENDPOINT; }
     @Override protected String getTokenEndpoint() { return HUBSPOT_TOKEN_ENDPOINT; }
     @Override protected String getProviderLabel() { return "HubSpot"; }
-    @Override protected String getScope() { return "crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read crm.objects.contacts.write crm.objects.companies.write crm.objects.deals.write tickets"; }
+    @Override
+    protected String getScope() {
+        return "crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read "
+                + "crm.objects.contacts.write crm.objects.companies.write crm.objects.deals.write tickets";
+    }
 
     @Override
     protected void storePendingOAuth(String email, String state, String codeVerifier, String clientId, String tokenEndpoint) {

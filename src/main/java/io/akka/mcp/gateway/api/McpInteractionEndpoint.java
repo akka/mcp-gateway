@@ -159,13 +159,20 @@ public class McpInteractionEndpoint extends AbstractProtectedEndpoint {
     }
 
     private int pageParam() {
-        try { return Math.max(0, Integer.parseInt(requestContext().queryParams().getString("page").orElse("0"))); }
-        catch (NumberFormatException e) { return 0; }
+        try {
+            return Math.max(0, Integer.parseInt(requestContext().queryParams().getString("page").orElse("0")));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private int pageSizeParam() {
-        try { return Math.max(1, Math.min(100, Integer.parseInt(requestContext().queryParams().getString("pageSize").orElse(String.valueOf(DEFAULT_PAGE_SIZE))))); }
-        catch (NumberFormatException e) { return DEFAULT_PAGE_SIZE; }
+        try {
+            return Math.max(1, Math.min(100, Integer.parseInt(
+                    requestContext().queryParams().getString("pageSize").orElse(String.valueOf(DEFAULT_PAGE_SIZE)))));
+        } catch (NumberFormatException e) {
+            return DEFAULT_PAGE_SIZE;
+        }
     }
 
     private InteractionsResponse toUserResponse(McpInteractionsByUserView.McpInteractionEntries result, int page, int pageSize) {

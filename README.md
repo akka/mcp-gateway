@@ -205,6 +205,14 @@ This is deliberate. Assistants fetch the tool list once, when they connect, and 
 
 Group membership and app assignment establish that you are *allowed* to use a system. They do not connect it. Each user still signs in to each system once through the dashboard, and the gateway acts strictly as that person — never with a shared or elevated account. So a colleague who can reach Salesforce sees only the Salesforce records their own Salesforce login permits.
 
+## Development
+
+### Code style
+
+Each Maven project (the root gateway and every `mcp-servers/*` sub-project) is linted with Checkstyle, using the shared ruleset at `checkstyle/checkstyle.xml`. It's bound to the `validate` phase, so `mvn compile` or `mvn test` runs it automatically and fails the build on a violation; run `mvn checkstyle:check` on its own to just lint. CI runs it for all four projects on every PR.
+
+The ruleset matches this codebase's existing conventions rather than a stock preset — it skips checks like mandatory braces or `ConstantName` that would fight the deliberate single-line getters/validation and lowercase static-final service handles (`log`, `okta`, etc.) already in use. It only covers `src/main/java`; test sources are excluded because this repo's test method names use the widely-accepted `methodUnderTest_condition_expectedResult` underscore convention, which Checkstyle's naming checks can't express.
+
 ## Questions or problems
 
 If a system will not connect, an answer looks wrong, or you think you should have access to something you do not, reach out to the team that maintains the gateway. Mentioning what you asked for and roughly when helps them find the matching entry in the log.
