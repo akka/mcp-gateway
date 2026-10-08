@@ -296,6 +296,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
 
         String email;
         String displayName;
+        String subject;
         var groups = new java.util.ArrayList<String>();
         try {
             var userResp = HTTP_CLIENT.send(
@@ -313,6 +314,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
             var userJson = MAPPER.readTree(userResp.body());
             log.debug("userinfo claims: {}", userResp.body());
             email = userJson.path("email").asText();
+            subject = userJson.path("sub").asText("");
             displayName = userJson.path("name").asText(email);
             var groupsNode = userJson.path("Entitlements");
             if (groupsNode.isArray()) {
@@ -328,10 +330,13 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
                             "User info fetch failed: " + e.getMessage());
         }
 
+        var lookedUpApps = oktaAssignedApps.forSubjectOrEmail(subject, email);
         if (!oktaAssignedApps.isConfigured()) {
             log.warn("Okta apps: skipping, MCP_PROXY_OKTA_API_TOKEN or OKTA_ISSUER_URL is blank");
+        } else if (lookedUpApps.isEmpty()) {
+            log.warn("Okta apps: lookup did not complete for {}, so they are treated as having no apps", email);
         }
-        List<UserSession.App> apps = oktaAssignedApps.forUser(email).orElse(List.of());
+        List<UserSession.App> apps = lookedUpApps.orElse(List.of());
         log.info("Okta apps: resolved {} apps for {}: {}", apps.size(), email, apps);
 
         // Check if this Okta flow was initiated by an OAuth 2.1 authorize request
