@@ -185,7 +185,7 @@ Every system is tied to an Okta application. Being assigned that application is 
 | Seamless.AI | Seamless.AI |
 | Okta admin lookups | Okta MCP Admin |
 
-An application counts as assigned when it is active and assigned to you directly or through a group, whether or not its icon is shown on your Okta dashboard. That lets an application exist only to give the gateway access to a system.
+An application counts as assigned when it is active and assigned to you, whether or not its icon is shown on your Okta dashboard. That lets an application exist only to give the gateway access to a system.
 
 Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
 
