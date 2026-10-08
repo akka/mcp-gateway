@@ -8,7 +8,6 @@ import akka.http.javadsl.model.headers.RawHeader;
 import akka.javasdk.annotations.Acl;
 import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
-import akka.javasdk.annotations.http.Post;
 import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.HttpResponses;
 import io.akka.mcp.gateway.application.OAuthPendingAuthorizationEntity;
@@ -37,21 +36,23 @@ import java.util.UUID;
  * Handles end-user authentication via Okta OIDC and exposes the browser-facing session API.
  *
  * On startup, performs OIDC discovery against {@code OKTA_ISSUER_URL} to resolve all
- * endpoints (authorize, token, userinfo, end_session) so no endpoint URLs are hardcoded.
+ * endpoints (authorize, token, userinfo) so no endpoint URLs are hardcoded.
  *
  * Login flow (PKCE):
- *   1. Browser POSTs to {@code /auth/initiate} with an email address.
+ *   1. {@code /login} forwards the browser to {@code /auth/start} (unless the user just signed out).
  *   2. A PKCE pair is generated and the pending state is stored in {@link io.akka.mcp.gateway.application.OidcPendingLoginEntity}.
- *   3. Browser is redirected to Okta with the code_challenge.
+ *   3. Browser is redirected to Okta with the code_challenge; with a live Okta session Okta answers without a prompt.
  *   4. Okta redirects back to {@code /auth/callback} with an auth code.
  *   5. The code is exchanged for tokens; userinfo is fetched to get email, name, and group entitlements.
- *   6. A {@link io.akka.mcp.gateway.application.UserSessionEntity} is created and a {@code SESSION} cookie is set.
+ *      The email domain is checked here, against the identity Okta vouched for.
+ *   6. A {@link io.akka.mcp.gateway.application.UserSessionEntity} is created, a {@code SESSION} cookie is set,
+ *      and the browser lands on the page it originally asked for.
  *
  * If the callback's {@code state} matches a pending OAuth 2.1 authorization request
  * (initiated by an MCP client via {@link McpOAuthEndpoint}), the user is forwarded to
  * the consent page instead of the main dashboard.
  *
- * Other routes: {@code /auth/me} (current user info), {@code /auth/logout} (clears cookie + Okta end_session redirect),
+ * Other routes: {@code /auth/me} (current user info), {@code /auth/logout} (ends the gateway session only; the Okta session is kept),
  * {@code /auth/okta-status} (admin lookup).
  */
 @HttpEndpoint("/")
@@ -68,13 +69,10 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
     private final String authorizationEndpoint;
     private final String tokenEndpoint;
     private final String userinfoEndpoint;
-    private final String endSessionEndpoint;
     private final String oktaBaseUrl;
     private final String oktaApiToken;
     private final String allowedEmailDomain;
 
-    public record InitiateRequest(String email) {}
-    public record InitiateResponse(String redirectUrl) {}
     public record MeResponse(String email, String displayName, List<String> groups, List<UserSession.App> apps, boolean canAdmin) {}
     public record OktaUserStatusResponse(
             String login, String email, String firstName, String lastName,
@@ -90,7 +88,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
         this.allowedEmailDomain = config.getString("okta.allowed-email-domain");
         String issuerUrl = config.getString("okta.issuer-url");
 
-        String authEp = "", tokenEp = "", userinfoEp = "", endSessionEp = "";
+        String authEp = "", tokenEp = "", userinfoEp = "";
         if (!issuerUrl.isBlank()) {
             try {
                 String base = issuerUrl.endsWith("/") ? issuerUrl.substring(0, issuerUrl.length() - 1) : issuerUrl;
@@ -108,8 +106,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
                     authEp = json.path("authorization_endpoint").asText("");
                     tokenEp = json.path("token_endpoint").asText("");
                     userinfoEp = json.path("userinfo_endpoint").asText("");
-                    endSessionEp = json.path("end_session_endpoint").asText("");
-                    log.info("OIDC discovery OK: authorization_endpoint={} end_session_endpoint={}", authEp, endSessionEp);
+                    log.info("OIDC discovery OK: authorization_endpoint={}", authEp);
                 }
             } catch (Exception e) {
                 log.error("OIDC discovery failed", e);
@@ -120,7 +117,6 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
         this.authorizationEndpoint = authEp;
         this.tokenEndpoint = tokenEp;
         this.userinfoEndpoint = userinfoEp;
-        this.endSessionEndpoint = endSessionEp;
 
         String baseUrl = "";
         if (!issuerUrl.isBlank()) {
@@ -137,29 +133,37 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
 
     @Get("")
     public HttpResponse index() {
-        if (requireSession() == null) return redirectToLogin();
+        if (requireSession() == null) return redirectToLogin("/");
         return HttpResponses.staticResource("index.html");
     }
 
     @Get("/login")
     public HttpResponse loginPage() {
         if (requireSession() != null) return redirectTo("/?flash=already-logged-in");
-        return HttpResponses.staticResource("login.html");
+        // Never reuse a cached copy: a stale login page from an older deploy breaks the sign-in.
+        return HttpResponses.staticResource("login.html")
+                .addHeader(RawHeader.create("Cache-Control", "no-cache"));
     }
 
+    /**
+     * Starts the Okta sign-in. No email is asked for: Okta identifies the user itself, so with a
+     * live Okta session this is a few silent redirects. {@code return_to} is the gateway path to
+     * land on afterwards.
+     */
     @Get("/auth/start")
     public HttpResponse start() {
         if (authorizationEndpoint.isBlank()) {
             return HttpResponses.internalServerError(
                     "Okta is not configured. Set OKTA_ISSUER_URL, OKTA_CLIENT_ID, and OKTA_REDIRECT_URI.");
         }
+        String returnTo = safeReturnTo(requestContext().queryParams().getString("return_to").orElse(null));
         String state = UUID.randomUUID().toString();
         String codeVerifier = generateCodeVerifier();
         String codeChallenge = generateCodeChallenge(codeVerifier);
         componentClient
                 .forKeyValueEntity(state)
                 .method(OidcPendingLoginEntity::create)
-                .invoke(new OidcPendingLoginEntity.CreateCommand("", Instant.now().plusSeconds(600), codeVerifier));
+                .invoke(new OidcPendingLoginEntity.CreateCommand("", Instant.now().plusSeconds(600), codeVerifier, returnTo));
 
         String authUrl = authorizationEndpoint
                 + "?response_type=code"
@@ -175,59 +179,23 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
                 .addHeader(Location.create(authUrl));
     }
 
-    @Post("/auth/initiate")
-    public HttpResponse initiate(InitiateRequest request) {
-        log.debug("initiate called, email={}", request.email());
-        if (request.email() == null || !emailDomainAllowed(request.email())) {
-            log.warn("initiate rejected: email domain not @{} (email={})", allowedEmailDomain, request.email());
-            return HttpResponses.badRequest("Email must end with @" + allowedEmailDomain);
+    /**
+     * Only a local gateway path is accepted, so the sign-in can't be turned into an open redirect;
+     * anything else lands on the dashboard.
+     */
+    static String safeReturnTo(String path) {
+        if (path == null || !path.startsWith("/") || path.startsWith("//")
+                || path.startsWith("/login") || path.startsWith("/auth/")) return "/";
+        for (char c : path.toCharArray()) {
+            if (c < 0x20 || c == 0x7f || c == '\\') return "/";
         }
-        if (authorizationEndpoint.isBlank()) {
-            log.warn("initiate rejected: authorizationEndpoint is blank — OKTA_ISSUER_URL/OKTA_CLIENT_ID/OKTA_REDIRECT_URI may not be set");
-            return HttpResponses.internalServerError(
-                    "Okta is not configured. Set OKTA_ISSUER_URL, OKTA_CLIENT_ID, and OKTA_REDIRECT_URI.");
-        }
-
-        String state = UUID.randomUUID().toString();
-        String codeVerifier = generateCodeVerifier();
-        String codeChallenge = generateCodeChallenge(codeVerifier);
-        log.debug("initiate: creating pending login state={}", state);
-        try {
-            componentClient
-                    .forKeyValueEntity(state)
-                    .method(OidcPendingLoginEntity::create)
-                    .invoke(new OidcPendingLoginEntity.CreateCommand(request.email(), Instant.now().plusSeconds(600), codeVerifier));
-        } catch (Exception e) {
-            log.error("initiate: failed to persist pending login", e);
-            throw e;
-        }
-
-        String authUrl = authorizationEndpoint
-                + "?response_type=code"
-                + "&client_id=" + encode(clientId)
-                + "&redirect_uri=" + encode(redirectUri)
-                + "&scope=" + encode("openid profile email")
-                + "&state=" + encode(state)
-                + "&login_hint=" + encode(request.email())
-                + "&code_challenge_method=S256"
-                + "&code_challenge=" + encode(codeChallenge);
-
-        log.debug("initiate: redirecting to authorization endpoint");
-        return HttpResponses.ok(new InitiateResponse(authUrl));
+        return path;
     }
 
     /** Whether the email is permitted to sign in. A blank allowed-domain means no restriction. */
     private boolean emailDomainAllowed(String email) {
         if (allowedEmailDomain == null || allowedEmailDomain.isBlank()) return true;
         return email.toLowerCase().endsWith("@" + allowedEmailDomain.toLowerCase());
-    }
-
-    public record LoginConfigResponse(String allowedEmailDomain) {}
-
-    /** Public: lets the login page show the required email domain without hardcoding it. */
-    @Get("/auth/login-config")
-    public HttpResponse loginConfig() {
-        return HttpResponses.ok(new LoginConfigResponse(allowedEmailDomain));
     }
 
     @Get("/auth/callback")
@@ -325,6 +293,13 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
                     .withEntity(ContentTypes.TEXT_PLAIN_UTF8,
                             "User info fetch failed: " + e.getMessage());
         }
+        if (email.isBlank() || !emailDomainAllowed(email)) {
+            log.warn("callback rejected: email domain not @{} (email={})", allowedEmailDomain, email);
+            return HttpResponse.create()
+                    .withStatus(StatusCodes.FORBIDDEN)
+                    .withEntity(ContentTypes.TEXT_PLAIN_UTF8,
+                            "Sign-in is restricted to @" + allowedEmailDomain + " accounts.");
+        }
 
         var apps = new java.util.ArrayList<UserSession.App>();
         if (oktaApiToken.isBlank()) {
@@ -405,65 +380,40 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
 
         return HttpResponse.create()
                 .withStatus(StatusCodes.FOUND)
-                .addHeader(Location.create("/?flash=login"))
+                .addHeader(Location.create(pending.returnTo() == null ? "/" : pending.returnTo()))
                 .addHeader(RawHeader.create("Set-Cookie",
                         "SESSION=" + sessionToken + "; HttpOnly; SameSite=Lax; Path=/"));
     }
 
+    /**
+     * Signs out of the gateway only. The Okta session is left alone, so other Okta apps keep
+     * working; {@code flash=logout} keeps the login page from signing the user straight back in.
+     */
     @Get("/auth/logout")
     public HttpResponse logout() {
         String sessionToken = getSessionToken();
-        String clearCookie = "SESSION=; Max-Age=0; HttpOnly; Path=/";
-
-        if (!endSessionEndpoint.isBlank()) {
-            String postLogoutUri = mcpBaseUrl + "/login";
-            String endSessionUrl = endSessionEndpoint + "?post_logout_redirect_uri=" + encode(postLogoutUri);
-
-            // Read idToken BEFORE invalidating — invalidate resets state to empty
-            if (sessionToken != null && !sessionToken.isBlank()) {
-                try {
-                    var session = componentClient
-                            .forKeyValueEntity(sessionToken)
-                            .method(UserSessionEntity::getSession)
-                            .invoke();
-                    if (session != null && !session.isEmpty() && session.idToken() != null && !session.idToken().isBlank()) {
-                        endSessionUrl += "&id_token_hint=" + encode(session.idToken());
-                    }
-                    componentClient.forKeyValueEntity(sessionToken).method(UserSessionEntity::invalidate).invoke();
-                } catch (Exception ignored) {}
-            }
-
-            log.info("logout: redirecting to end_session_endpoint={} (id_token_hint={})",
-                    endSessionEndpoint, endSessionUrl.contains("id_token_hint") ? "present" : "missing");
-            return HttpResponse.create()
-                    .withStatus(StatusCodes.FOUND)
-                    .addHeader(Location.create(endSessionUrl))
-                    .addHeader(RawHeader.create("Set-Cookie", clearCookie));
-        }
-
         if (sessionToken != null && !sessionToken.isBlank()) {
             try {
                 componentClient.forKeyValueEntity(sessionToken).method(UserSessionEntity::invalidate).invoke();
             } catch (Exception ignored) {}
         }
-        log.info("logout: end_session_endpoint is blank, redirecting locally only");
         return HttpResponse.create()
                 .withStatus(StatusCodes.FOUND)
                 .addHeader(Location.create("/login?flash=logout"))
-                .addHeader(RawHeader.create("Set-Cookie", clearCookie));
+                .addHeader(RawHeader.create("Set-Cookie", "SESSION=; Max-Age=0; HttpOnly; Path=/"));
     }
 
     @Get("/auth/permissions")
     public HttpResponse permissionsPage() {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return redirectToLogin("/auth/permissions");
         return HttpResponses.staticResource("permissions.html");
     }
 
     @Get("/how-to-use")
     public HttpResponse howToUsePage() {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return redirectToLogin("/how-to-use");
         return HttpResponses.staticResource("how-to-use.html");
     }
 
@@ -482,7 +432,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
     @Get("/okta-status")
     public HttpResponse oktaStatusPage() {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return redirectToLogin("/okta-status");
         var denied = requireAdmin(session);
         if (denied != null) return denied;
         return HttpResponses.staticResource("okta-status.html");

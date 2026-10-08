@@ -5,10 +5,11 @@ import java.time.Instant;
 public record OidcPendingLogin(
         String loginHint,
         Instant expiresAt,
-        String codeVerifier
+        String codeVerifier,
+        String returnTo
 ) {
     public static OidcPendingLogin empty() {
-        return new OidcPendingLogin(null, null, null);
+        return new OidcPendingLogin(null, null, null, null);
     }
 
     public boolean isEmpty() {

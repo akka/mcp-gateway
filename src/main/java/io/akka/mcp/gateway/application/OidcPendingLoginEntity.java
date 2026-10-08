@@ -17,7 +17,7 @@ public class OidcPendingLoginEntity extends KeyValueEntity<OidcPendingLogin> {
 
     public Effect<Done> create(CreateCommand cmd) {
         return effects()
-                .updateState(new OidcPendingLogin(cmd.loginHint(), cmd.expiresAt(), cmd.codeVerifier()))
+                .updateState(new OidcPendingLogin(cmd.loginHint(), cmd.expiresAt(), cmd.codeVerifier(), cmd.returnTo()))
                 .thenReply(Done.getInstance());
     }
 
@@ -29,5 +29,6 @@ public class OidcPendingLoginEntity extends KeyValueEntity<OidcPendingLogin> {
         return effects().updateState(OidcPendingLogin.empty()).thenReply(Done.getInstance());
     }
 
-    public record CreateCommand(String loginHint, Instant expiresAt, String codeVerifier) {}
+    /** @param returnTo gateway path to land on after sign-in; {@code null} means the dashboard */
+    public record CreateCommand(String loginHint, Instant expiresAt, String codeVerifier, String returnTo) {}
 }
