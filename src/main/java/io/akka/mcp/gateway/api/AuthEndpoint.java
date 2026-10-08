@@ -71,6 +71,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
     private final String endSessionEndpoint;
     private final String oktaBaseUrl;
     private final String oktaApiToken;
+    private final OktaAssignedApps oktaAssignedApps;
     private final String allowedEmailDomain;
 
     public record InitiateRequest(String email) {}
@@ -133,6 +134,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
             }
         }
         this.oktaBaseUrl = baseUrl;
+        this.oktaAssignedApps = new OktaAssignedApps(baseUrl, oktaApiToken);
     }
 
     @Get("")
@@ -326,46 +328,10 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
                             "User info fetch failed: " + e.getMessage());
         }
 
-        var apps = new java.util.ArrayList<UserSession.App>();
-        if (oktaApiToken.isBlank()) {
-            log.warn("Okta apps: skipping — MCP_PROXY_OKTA_API_TOKEN is blank");
-        } else if (oktaBaseUrl.isBlank()) {
-            log.warn("Okta apps: skipping — oktaBaseUrl is blank (check OKTA_ISSUER_URL)");
-        } else {
-            try {
-                var encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
-                var url = oktaBaseUrl + "/api/v1/users/" + encodedEmail + "/appLinks";
-                log.info("Okta apps: fetching {}", url);
-                var appsResp = HTTP_CLIENT.send(
-                        HttpRequest.newBuilder()
-                                .uri(URI.create(url))
-                                .header("Authorization", "SSWS " + oktaApiToken)
-                                .header("Accept", "application/json")
-                                .GET().build(),
-                        java.net.http.HttpResponse.BodyHandlers.ofString());
-                log.info("Okta apps: status={} bodyLength={}", appsResp.statusCode(), appsResp.body().length());
-                if (appsResp.statusCode() == 200) {
-                    log.debug("Okta apps: body={}", appsResp.body());
-                    var appsJson = MAPPER.readTree(appsResp.body());
-                    if (appsJson.isArray()) {
-                        for (var app : appsJson) {
-                            var appInstanceId = app.path("appInstanceId").asText("");
-                            var label = app.path("label").asText("");
-                            log.info("Okta apps: appInstanceId={} label={}", appInstanceId, label);
-                            if (!appInstanceId.isBlank() && apps.stream().noneMatch(a -> a.id().equals(appInstanceId))) {
-                                apps.add(new UserSession.App(appInstanceId, label.isBlank() ? appInstanceId : label));
-                            }
-                        }
-                    } else {
-                        log.warn("Okta apps: response is not a JSON array");
-                    }
-                } else {
-                    log.warn("Okta apps: error status={} body={}", appsResp.statusCode(), appsResp.body());
-                }
-            } catch (Exception e) {
-                log.warn("Okta apps: exception — {}", e.getMessage(), e);
-            }
+        if (!oktaAssignedApps.isConfigured()) {
+            log.warn("Okta apps: skipping, MCP_PROXY_OKTA_API_TOKEN or OKTA_ISSUER_URL is blank");
         }
+        List<UserSession.App> apps = oktaAssignedApps.forUser(email).orElse(List.of());
         log.info("Okta apps: resolved {} apps for {}: {}", apps.size(), email, apps);
 
         // Check if this Okta flow was initiated by an OAuth 2.1 authorize request

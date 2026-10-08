@@ -73,6 +73,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
     private final String oktaRedirectUri;
     private final String oktaBaseUrl;
     private final String oktaApiToken;
+    private final OktaAssignedApps oktaAssignedApps;
     private final List<String> redirectHostAllowlist;
 
     public McpOAuthEndpoint(ComponentClient componentClient, Config config) {
@@ -119,6 +120,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
             }
         }
         this.oktaBaseUrl = base;
+        this.oktaAssignedApps = new OktaAssignedApps(base, oktaApiToken);
     }
 
     /**
@@ -168,37 +170,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
      */
     private List<io.akka.mcp.gateway.domain.UserSession.App> fetchCurrentApps(
             String email, List<io.akka.mcp.gateway.domain.UserSession.App> fallback) {
-        if (oktaApiToken.isBlank() || oktaBaseUrl.isBlank() || email == null || email.isBlank()) {
-            return fallback;
-        }
-        try {
-            var encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
-            var request = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create(oktaBaseUrl + "/api/v1/users/" + encodedEmail + "/appLinks"))
-                    .header("Authorization", "SSWS " + oktaApiToken)
-                    .header("Accept", "application/json")
-                    .GET().build();
-            var resp = java.net.http.HttpClient.newHttpClient()
-                    .send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() != 200) {
-                log.warn("Okta apps refresh: status={} for {}", resp.statusCode(), email);
-                return fallback;
-            }
-            var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
-            if (!json.isArray()) return fallback;
-            var apps = new java.util.ArrayList<io.akka.mcp.gateway.domain.UserSession.App>();
-            for (var app : json) {
-                var appInstanceId = app.path("appInstanceId").asText("");
-                var label = app.path("label").asText("");
-                if (!appInstanceId.isBlank() && apps.stream().noneMatch(a -> a.id().equals(appInstanceId))) {
-                    apps.add(new io.akka.mcp.gateway.domain.UserSession.App(appInstanceId, label.isBlank() ? appInstanceId : label));
-                }
-            }
-            return apps;
-        } catch (Exception e) {
-            log.warn("Okta apps refresh failed for {}: {}", email, e.getMessage());
-            return fallback;
-        }
+        return oktaAssignedApps.forUser(email).orElse(fallback);
     }
 
     // ── Dynamic Client Registration ─────────────────────────────────────────
