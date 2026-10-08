@@ -10,107 +10,42 @@
         h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
         p.subtitle { color: #666; margin-top: 0; margin-bottom: 32px; }
         .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 28px 24px; }
-        label { display: block; font-size: 0.88rem; font-weight: 500; margin-bottom: 6px; }
-        input[type="email"] { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 0.95rem; outline: none; }
-        input[type="email"]:focus { border-color: #0070d2; box-shadow: 0 0 0 2px rgba(0,112,210,0.15); }
-        .btn-primary { display: block; width: 100%; padding: 10px; margin-top: 16px; background: #0070d2; color: white; border: none; border-radius: 6px; font-size: 0.92rem; font-weight: 500; cursor: pointer; }
+        .btn-primary { display: block; width: 100%; padding: 10px; background: #0070d2; color: white; border: none; border-radius: 6px; font-size: 0.92rem; font-weight: 500; cursor: pointer; }
         .btn-primary:hover { background: #005fb2; }
-        .btn-primary:disabled { background: #aaa; cursor: default; }
-        .error { color: #c0392b; font-size: 0.83rem; margin-top: 6px; display: none; }
         .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 20px; font-size: 0.88rem; font-weight: 500; background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
     </style>
 </head>
 <body>
     <h1>MCP Connections</h1>
-    <p class="subtitle">Sign in with your Okta account to continue.</p>
+    <p class="subtitle" id="subtitle">Redirecting to Okta…</p>
 
     <div id="flash" style="display:none" class="flash"></div>
-    <div class="card">
-        <label for="email">Work email</label>
-        <input type="email" id="email" placeholder="you@example.com" autofocus>
-        <div id="email-error" class="error">Please enter a valid email address.</div>
-        <button class="btn-primary" id="submit-btn" onclick="handleSubmit()">Continue with Okta</button>
+    <div class="card" id="card" style="display:none">
+        <button class="btn-primary" id="submit-btn" onclick="signIn()">Sign in with Okta</button>
     </div>
 
     <script>
-        // Required email domain, resolved from server config (blank = no restriction).
-        var allowedEmailDomain = '';
-        fetch('/auth/login-config')
-            .then(function(r) { return r.ok ? r.json() : null; })
-            .then(function(cfg) {
-                if (cfg && cfg.allowedEmailDomain) {
-                    allowedEmailDomain = cfg.allowedEmailDomain.toLowerCase();
-                    document.getElementById('email').placeholder = 'you@' + allowedEmailDomain;
-                    document.getElementById('email-error').textContent =
-                        'Only @' + allowedEmailDomain + ' email addresses are allowed.';
-                }
-            })
-            .catch(function() { /* leave domain unrestricted client-side; server still enforces */ });
+        var params = new URLSearchParams(window.location.search);
+        var startUrl = '/auth/start' +
+            (params.get('return_to') ? '?return_to=' + encodeURIComponent(params.get('return_to')) : '');
 
-        (function() {
-            var params = new URLSearchParams(window.location.search);
-            if (params.get('flash') === 'logout') {
-                var el = document.getElementById('flash');
-                el.textContent = 'You have been signed out.';
-                el.style.display = 'block';
-                history.replaceState(null, '', '/login');
-            }
-        })();
+        function signIn() {
+            window.location.href = startUrl;
+        }
 
-        document.getElementById('email').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') handleSubmit();
-        });
-
-        function handleSubmit() {
-            var email = document.getElementById('email').value.trim();
-            var errorEl = document.getElementById('email-error');
-            var btn = document.getElementById('submit-btn');
-
-            if (allowedEmailDomain && !email.toLowerCase().endsWith('@' + allowedEmailDomain)) {
-                errorEl.style.display = 'block';
-                return;
-            }
-            if (!email) {
-                errorEl.style.display = 'block';
-                return;
-            }
-            errorEl.style.display = 'none';
-            btn.disabled = true;
-            btn.textContent = 'Redirecting…';
-
-            fetch('/auth/initiate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email })
-            })
-            .then(function(r) {
-                console.debug('[auth/initiate] status=' + r.status + ' ok=' + r.ok);
-                if (!r.ok) {
-                    return r.text().then(function(text) {
-                        console.error('[auth/initiate] error body:', text);
-                        throw new Error(text || 'HTTP ' + r.status);
-                    });
-                }
-                return r.json();
-            })
-            .then(function(data) {
-                console.debug('[auth/initiate] response:', data);
-                if (data.redirectUrl) {
-                    window.location.href = data.redirectUrl;
-                } else {
-                    errorEl.textContent = 'Login failed. Please try again.';
-                    errorEl.style.display = 'block';
-                    btn.disabled = false;
-                    btn.textContent = 'Continue with Okta';
-                }
-            })
-            .catch(function(err) {
-                console.error('[auth/initiate] caught error:', err);
-                errorEl.textContent = 'An error occurred. Please try again.';
-                errorEl.style.display = 'block';
-                btn.disabled = false;
-                btn.textContent = 'Continue with Okta';
-            });
+        // Okta identifies the user itself, so normally go straight there: with a live Okta session
+        // the user is back on the gateway without seeing a prompt. Right after signing out, stay
+        // here instead, or the user would be signed straight back in.
+        var signedOut = params.get('flash') === 'logout';
+        if (signedOut) {
+            var el = document.getElementById('flash');
+            el.textContent = 'You have been signed out.';
+            el.style.display = 'block';
+            document.getElementById('subtitle').textContent = 'Sign in with your Okta account to continue.';
+            document.getElementById('card').style.display = 'block';
+            history.replaceState(null, '', '/login');
+        } else {
+            window.location.replace(startUrl);
         }
     </script>
 </body>

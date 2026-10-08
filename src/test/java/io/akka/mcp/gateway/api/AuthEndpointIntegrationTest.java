@@ -1,5 +1,6 @@
 package io.akka.mcp.gateway.api;
 
+import akka.http.javadsl.model.StatusCodes;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import io.akka.mcp.gateway.application.UserSessionEntity;
@@ -35,12 +36,29 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void initiate_withNonLightbendEmail_returns400() {
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.POST("/auth/initiate")
-                        .withRequestBody(new AuthEndpoint.InitiateRequest("user@example.com"))
-                        .responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("400");
+    public void dashboard_withoutSession_redirectsToLoginWithReturnPath() {
+        var response = httpClient.GET("/").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?return_to=%2F");
+    }
+
+    @Test
+    public void safeReturnTo_keepsLocalPaths() {
+        assertThat(AuthEndpoint.safeReturnTo("/interactions")).isEqualTo("/interactions");
+        assertThat(AuthEndpoint.safeReturnTo("/admin/write-access?x=1")).isEqualTo("/admin/write-access?x=1");
+    }
+
+    @Test
+    public void safeReturnTo_rejectsAnythingThatCouldLeaveTheGateway() {
+        assertThat(AuthEndpoint.safeReturnTo(null)).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("https://evil.example")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("//evil.example")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/\\evil.example")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/x\r\nSet-Cookie: a=b")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/login")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/auth/logout")).isEqualTo("/");
     }
 
     @Test
@@ -67,10 +85,12 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void logout_withoutSession_redirects() {
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/auth/logout").responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+    public void logout_withoutSession_redirectsToSignedOutLoginPage() {
+        var response = httpClient.GET("/auth/logout").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?flash=logout");
     }
 
     @Test
@@ -165,13 +185,20 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void logout_withSession_clearsSessionAndRedirects() {
+    public void logout_withSession_endsTheGatewaySessionOnly() {
         var token = createSession("test@lightbend.com", "Test User", List.of());
 
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/auth/logout")
-                        .addHeader("Cookie", "SESSION=" + token)
+        var response = httpClient.GET("/auth/logout")
+                .addHeader("Cookie", "SESSION=" + token)
+                .invoke();
+
+        // Stays on the gateway: no detour through Okta's logout, so the Okta session survives.
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?flash=logout");
+        var me = assertThrows(Exception.class, () ->
+                httpClient.GET("/auth/me").addHeader("Cookie", "SESSION=" + token)
                         .responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+        assertThat(me.getMessage()).contains("401");
     }
 }

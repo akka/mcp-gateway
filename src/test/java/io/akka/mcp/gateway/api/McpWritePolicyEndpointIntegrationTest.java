@@ -153,7 +153,7 @@ public class McpWritePolicyEndpointIntegrationTest extends TestKitSupport {
         var response = httpClient.GET("/admin/write-access").invoke();
 
         assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
-        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value())).hasValue("/login");
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value())).hasValue("/login?return_to=%2Fadmin%2Fwrite-access");
     }
 
     @Test

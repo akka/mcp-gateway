@@ -12,7 +12,7 @@ public class OidcPendingLoginEntityTest {
     @Test
     public void create_storesPendingLogin() {
         var testKit = KeyValueEntityTestKit.of("state-id", OidcPendingLoginEntity::new);
-        var cmd = new OidcPendingLoginEntity.CreateCommand("alice@lightbend.com", Instant.now().plusSeconds(600), "verifier-abc");
+        var cmd = new OidcPendingLoginEntity.CreateCommand("alice@lightbend.com", Instant.now().plusSeconds(600), "verifier-abc", null);
         var result = testKit.method(OidcPendingLoginEntity::create).invoke(cmd);
         assertThat(result.isReply()).isTrue();
         assertThat(testKit.getState().loginHint()).isEqualTo("alice@lightbend.com");
@@ -30,7 +30,7 @@ public class OidcPendingLoginEntityTest {
     @Test
     public void get_whenCreated_returnsPending() {
         var testKit = KeyValueEntityTestKit.of("state-id", OidcPendingLoginEntity::new);
-        var cmd = new OidcPendingLoginEntity.CreateCommand("bob@lightbend.com", Instant.now().plusSeconds(600), "verifier-bob");
+        var cmd = new OidcPendingLoginEntity.CreateCommand("bob@lightbend.com", Instant.now().plusSeconds(600), "verifier-bob", null);
         testKit.method(OidcPendingLoginEntity::create).invoke(cmd);
         var result = testKit.method(OidcPendingLoginEntity::get).invoke();
         assertThat(result.getReply().loginHint()).isEqualTo("bob@lightbend.com");
@@ -41,7 +41,7 @@ public class OidcPendingLoginEntityTest {
     @Test
     public void get_whenExpired_isExpired() {
         var testKit = KeyValueEntityTestKit.of("state-id", OidcPendingLoginEntity::new);
-        var cmd = new OidcPendingLoginEntity.CreateCommand("carol@lightbend.com", Instant.now().minusSeconds(1), "verifier-carol");
+        var cmd = new OidcPendingLoginEntity.CreateCommand("carol@lightbend.com", Instant.now().minusSeconds(1), "verifier-carol", null);
         testKit.method(OidcPendingLoginEntity::create).invoke(cmd);
         var result = testKit.method(OidcPendingLoginEntity::get).invoke();
         assertThat(result.getReply().isExpired()).isTrue();
@@ -50,7 +50,7 @@ public class OidcPendingLoginEntityTest {
     @Test
     public void delete_clearsPendingLogin() {
         var testKit = KeyValueEntityTestKit.of("state-id", OidcPendingLoginEntity::new);
-        var cmd = new OidcPendingLoginEntity.CreateCommand("dave@lightbend.com", Instant.now().plusSeconds(600), "verifier-dave");
+        var cmd = new OidcPendingLoginEntity.CreateCommand("dave@lightbend.com", Instant.now().plusSeconds(600), "verifier-dave", null);
         testKit.method(OidcPendingLoginEntity::create).invoke(cmd);
         var result = testKit.method(OidcPendingLoginEntity::delete).invoke();
         assertThat(result.isReply()).isTrue();
