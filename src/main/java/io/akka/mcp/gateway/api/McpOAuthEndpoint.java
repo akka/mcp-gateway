@@ -305,7 +305,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         componentClient
                 .forKeyValueEntity(oauthState)
                 .method(OidcPendingLoginEntity::create)
-                .invoke(new OidcPendingLoginEntity.CreateCommand("", Instant.now().plusSeconds(600), codeVerifier));
+                .invoke(new OidcPendingLoginEntity.CreateCommand("", Instant.now().plusSeconds(600), codeVerifier, null));
 
         String oktaUrl = oktaAuthorizationEndpoint
                 + "?response_type=code"

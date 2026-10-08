@@ -64,7 +64,7 @@ public class McpWritePolicyEndpoint extends AbstractProtectedEndpoint {
     @Get("")
     public HttpResponse page() {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return redirectToLogin("/admin/write-access");
         var denied = requireAdmin(session);
         if (denied != null) return denied;
         return HttpResponses.staticResource("write-access.html");
