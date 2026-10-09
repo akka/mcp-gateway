@@ -166,7 +166,9 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                         + "Slack allows one draft per channel: if one exists, ask the user to send or delete it first.",
                 props(
                         param("channel", "string",
-                                "Channel/DM/group id (e.g. C12345, D12345, G12345), or a user id for a DM. Use slack_list_channels or slack_search_messages to find it; @name and #name are not accepted."),
+                                "Channel/DM/group id (e.g. C12345, D12345, G12345), or a user id for a DM. "
+                                        + "Use slack_list_channels or slack_search_messages to find it; "
+                                        + "@name and #name are not accepted."),
                         param("text", "string", "Draft body (markdown supported)."),
                         param("thread_ts", "string",
                                 "Optional parent message timestamp (e.g. 1234567890.123456) to draft a thread reply. Omit for a new top-level message.")),
