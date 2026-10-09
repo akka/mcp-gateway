@@ -10,6 +10,7 @@ import akka.javasdk.http.AbstractHttpEndpoint;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
 import io.akka.mcp.slack.application.SlackApiClient;
+import io.akka.mcp.slack.application.SlackDraftClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +26,7 @@ import java.util.Map;
  *   Authorization: Bearer xoxp-...
  *
  *
- * Every tool is read-only (readOnlyHint: true) except slack_post_message, which is advertised with
+ * Every tool is read-only (readOnlyHint: true) except slack_post_message and slack_draft_message, which are advertised with
  * readOnlyHint: false so the gateway applies its write gate to it. The token is the user's own
  * OAuth token so they can only access channels and data they normally can see.
  */
@@ -37,9 +38,11 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String slackApiBaseUrl;
+    private final String hostedMcpUrl;
 
     public SlackMcpEndpoint(Config config) {
         this.slackApiBaseUrl = config.getString("slack.api-base-url");
+        this.hostedMcpUrl = config.getString("slack.hosted-mcp-url");
     }
 
     @Post("")
@@ -156,6 +159,19 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                                         + "not to be marked as posted by an assistant.")),
                 List.of("channel", "text")));
 
+        tools.add(writeTool("slack_draft_message",
+                "Save a draft message in the user's Slack (Drafts & Sent) for them to review, edit and send "
+                        + "themselves. Nothing is sent. Prefer this over slack_post_message whenever a person should "
+                        + "read the words first, and always for channels shared with customers or partners. "
+                        + "Slack allows one draft per channel: if one exists, ask the user to send or delete it first.",
+                props(
+                        param("channel", "string",
+                                "Channel/DM/group id (e.g. C12345, D12345, G12345), or a user id for a DM. Use slack_list_channels or slack_search_messages to find it; @name and #name are not accepted."),
+                        param("text", "string", "Draft body (markdown supported)."),
+                        param("thread_ts", "string",
+                                "Optional parent message timestamp (e.g. 1234567890.123456) to draft a thread reply. Omit for a new top-level message.")),
+                List.of("channel", "text")));
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tools", tools);
         return responseJson(id, result);
@@ -215,8 +231,14 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                     String threadTs = str(args, "thread_ts");
                     boolean markAsAssistant = !boolArg(args, "omit_assistant_marker");
                     var target = channelOrNotPosted(slack, channel);
-                    if (target.external()) throw new NotPostedException(externalChannelNotPosted(target, messageText));
+                    if (target.external()) throw new NotPostedException(externalChannelNotPosted(target, messageText, threadTs));
                     yield MAPPER.writeValueAsString(slack.postMessage(channel, messageText, threadTs, markAsAssistant));
+                }
+                case "slack_draft_message" -> {
+                    String channel = required(args, "channel");
+                    String draftText = required(args, "text");
+                    String threadTs = str(args, "thread_ts");
+                    yield new SlackDraftClient(token, hostedMcpUrl).createDraft(channel, draftText, threadTs);
                 }
                 default -> throw new IllegalArgumentException("Unknown tool: " + toolName);
             };
@@ -253,15 +275,19 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
             return slack.channelInfo(channel);
         } catch (SlackApiClient.SlackApiException e) {
             throw new NotPostedException("Not posted: could not check whether this conversation is shared outside Akka ("
-                    + e.slackError() + "). Nothing was sent.");
+                    + e.slackError() + "). Nothing was sent. To let the user review the message, save it with "
+                    + "slack_draft_message instead.");
         }
     }
 
-    private static String externalChannelNotPosted(SlackApiClient.Channel target, String text) {
+    private static String externalChannelNotPosted(SlackApiClient.Channel target, String text, String threadTs) {
         var where = target.name().isBlank() ? "This conversation" : "#" + target.name();
+        var thread = threadTs == null || threadTs.isBlank() ? "" : " and thread_ts=" + threadTs;
         return "Not posted: " + where + " is shared outside Akka, and an assistant never posts there. A person reviews "
-                + "and sends messages to external channels, without the assistant marker. Give the user this message "
-                + "to review and send themselves:\n\n" + text;
+                + "and sends messages to external channels, without the assistant marker. Save it as a draft for the "
+                + "user by calling slack_draft_message with the same channel" + thread + " and this text, then tell "
+                + "the user to review and send it from Drafts & Sent. If the draft cannot be saved, give the user "
+                + "this message to review and send themselves:\n\n" + text;
     }
 
     // -- tool schema helpers --

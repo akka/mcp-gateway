@@ -58,7 +58,7 @@ public class SlackMcpClient implements RemoteMcpClient {
     public HowToContent howTo(String dashboardUrl) {
         return new HowToContent(
                 "Step-by-step instructions for connecting your Slack workspace to the MCP Gateway.",
-                "Search messages, list channels, read conversations, post messages (writer role)",
+                "Search messages, list channels, read conversations, save drafts and post messages (writer role)",
                 """
                 # How to Connect Slack
 
@@ -87,6 +87,8 @@ public class SlackMcpClient implements RemoteMcpClient {
                 - Search messages across channels
                 - List channels and members
                 - Read conversation history
+                - Save a draft message or thread reply in your Slack "Drafts & Sent" for you to review and send \
+                yourself (needs the writer role). Slack allows one draft per channel
                 - Post messages and thread replies (needs the writer role; if you connected Slack before \
                 posting was added, disconnect and reconnect it once)
 
@@ -94,8 +96,8 @@ public class SlackMcpClient implements RemoteMcpClient {
                 - Every post starts with 🤖 so readers can tell an assistant wrote it. Tell your assistant \
                 explicitly if you do not want the marker on a particular message.
                 - Channels shared outside Akka (Slack Connect, or named `external-...`) are never posted \
-                to, with or without the marker. The assistant hands the text back so you can review it and \
-                send it yourself.
+                to, with or without the marker. The assistant saves the text as a draft in your Slack \
+                "Drafts & Sent" so you can review it and send it yourself.
                 - If the gateway cannot tell whether a channel is shared outside Akka, nothing is posted.
 
                 ## Troubleshooting
