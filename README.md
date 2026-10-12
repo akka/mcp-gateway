@@ -185,6 +185,8 @@ Reader and writer are independent, not tiered. If you only hold `mcp-gateway-rea
 
 One important detail: if the gateway cannot tell whether a tool reads or writes, it treats that tool as a **write**. This is deliberate — it fails safe. In practice it means a reader may occasionally be refused a tool that looks harmless, usually right after the gateway restarts and before it has re-learned the tool list.
 
+Your groups are re-read from Okta every time your assistant renews its connection, which is roughly hourly, so a role IT removes stops working without you having to do anything. If that check cannot reach Okta — it is down, rate limiting us, or refusing our token — you are treated as holding no groups at all rather than keeping the ones you had a moment ago. This too fails safe: it means a revoked role cannot stay alive through an outage, at the cost of refusing your tool calls until the next renewal that does reach Okta. Your assistant stays connected the whole time, it simply has no permissions, so waiting for the next renewal is usually enough; reconnecting it works as well.
+
 ### Applications decide which systems you see
 
 Every system is tied to an Okta application. Being assigned that application is what puts the system in the **accessible** list on your dashboard; without it the system appears as unavailable and you should ask IT to assign it to you.
@@ -202,6 +204,8 @@ Every system is tied to an Okta application. Being assigned that application is 
 | Okta admin lookups | Okta MCP Admin |
 
 An application counts as assigned when it is active and assigned to you, whether or not its icon is shown on your Okta dashboard. That lets an application exist only to give the gateway access to a system.
+
+Application assignments are re-read on renewal and fail safe exactly as groups do, so a check that cannot reach Okta leaves every system unavailable until the next renewal that succeeds.
 
 Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Sheets, Gmail, and Calendar cannot currently be granted separately.
 

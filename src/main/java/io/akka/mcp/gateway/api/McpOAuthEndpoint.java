@@ -67,6 +67,18 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
 
     private static final Logger log = LoggerFactory.getLogger(McpOAuthEndpoint.class);
 
+    /**
+     * Shared rather than built per call, and bounded on both ends: a default
+     * {@code HttpClient} waits forever to connect and forever for an answer, so an Okta that
+     * black-holes the request would hang the {@code /oauth2/token} exchange with it and the
+     * client would get no token at all instead of a prompt one with no permissions. Matches the
+     * timeouts {@link OktaAssignedApps} uses for the apps lookup.
+     */
+    private static final java.net.http.HttpClient HTTP_CLIENT = java.net.http.HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(10))
+            .build();
+    private static final java.time.Duration OKTA_REQUEST_TIMEOUT = java.time.Duration.ofSeconds(15);
+
     private final String baseUrl;
     private final String oktaAuthorizationEndpoint;
     private final String oktaClientId;
@@ -95,9 +107,10 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
             try {
                 String base = issuerUrl.endsWith("/") ? issuerUrl.substring(0, issuerUrl.length() - 1) : issuerUrl;
                 String discoveryUrl = base + "/.well-known/openid-configuration";
-                var resp = java.net.http.HttpClient.newHttpClient().send(
+                var resp = HTTP_CLIENT.send(
                         java.net.http.HttpRequest.newBuilder()
                                 .uri(java.net.URI.create(discoveryUrl))
+                                .timeout(OKTA_REQUEST_TIMEOUT)
                                 .GET().build(),
                         java.net.http.HttpResponse.BodyHandlers.ofString());
                 if (resp.statusCode() == 200) {
@@ -128,8 +141,15 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
      * trusting the (potentially stale) groups captured at the original authorization. Without
      * this, a refresh_token grant would keep re-stamping whatever groups existed when the MCP
      * client first authorized, so a role revoked in Okta later would never take effect for as
-     * long as the client keeps refreshing. Falls back to the stored groups if the lookup fails
-     * or isn't configured, so a transient Okta outage doesn't break token refresh.
+     * long as the client keeps refreshing.
+     *
+     * A lookup that runs but fails yields no groups at all, not the stored ones: keeping those
+     * would hold a role that Okta has since revoked open for as long as the failures last, and
+     * every refresh would renew it. The refresh itself still succeeds, so the client keeps a
+     * usable token and is refused every tool call until a later lookup succeeds (issue #112).
+     * The stored groups only stand when the lookup isn't configured at all, since sign-in then
+     * takes groups from the OIDC {@code Entitlements} claim without ever consulting the API
+     * token, and failing closed would strip roles where nothing is actually broken.
      */
     private List<String> fetchCurrentGroups(String email, List<String> fallback) {
         if (oktaApiToken.isBlank() || oktaBaseUrl.isBlank() || email == null || email.isBlank()) {
@@ -139,26 +159,36 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
             var encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
             var request = java.net.http.HttpRequest.newBuilder()
                     .uri(java.net.URI.create(oktaBaseUrl + "/api/v1/users/" + encodedEmail + "/groups"))
+                    .timeout(OKTA_REQUEST_TIMEOUT)
                     .header("Authorization", "SSWS " + oktaApiToken)
                     .header("Accept", "application/json")
                     .GET().build();
-            var resp = java.net.http.HttpClient.newHttpClient()
-                    .send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            var resp = HTTP_CLIENT.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() != 200) {
-                log.warn("Okta groups refresh: status={} for {}", resp.statusCode(), email);
-                return fallback;
+                log.warn("Okta groups refresh: status={} for {}, so they are treated as having no groups",
+                        resp.statusCode(), email);
+                return List.of();
             }
             var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
-            if (!json.isArray()) return fallback;
+            if (!json.isArray()) {
+                log.warn("Okta groups refresh: response for {} is not a JSON array,"
+                        + " so they are treated as having no groups", email);
+                return List.of();
+            }
             var groups = new java.util.ArrayList<String>();
             for (var g : json) {
                 var name = g.path("profile").path("name").asText("");
                 if (!name.isBlank() && !groups.contains(name)) groups.add(name);
             }
             return groups;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Okta groups refresh interrupted for {}, so they are treated as having no groups", email);
+            return List.of();
         } catch (Exception e) {
-            log.warn("Okta groups refresh failed for {}: {}", email, e.getMessage());
-            return fallback;
+            log.warn("Okta groups refresh failed for {}: {}, so they are treated as having no groups",
+                    email, e.getMessage());
+            return List.of();
         }
     }
 
@@ -166,11 +196,21 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
      * Re-fetches the user's current Okta app assignments, mirroring {@link #fetchCurrentGroups}.
      * Without this, app-gated tools (okta-admin especially) would silently disappear on the next
      * refresh, since the refresh grant doesn't otherwise know which apps are currently assigned.
-     * Falls back to the stored apps if the lookup fails or isn't configured.
+     *
+     * A failed lookup means the same here as for the groups above: no apps, which is what
+     * sign-in already does, so an app unassigned in Okta cannot stay usable through an outage.
+     * The stored apps only stand when the lookup isn't configured at all.
      */
     private List<io.akka.mcp.gateway.domain.UserSession.App> fetchCurrentApps(
             String email, List<io.akka.mcp.gateway.domain.UserSession.App> fallback) {
-        return oktaAssignedApps.forUser(email).orElse(fallback);
+        if (!oktaAssignedApps.isConfigured()) {
+            return fallback;
+        }
+        var apps = oktaAssignedApps.forUser(email);
+        if (apps.isEmpty()) {
+            log.warn("Okta apps refresh: lookup did not complete for {}, so they are treated as having no apps", email);
+        }
+        return apps.orElse(List.of());
     }
 
     // ── Dynamic Client Registration ─────────────────────────────────────────
@@ -569,7 +609,9 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         // Re-check current group membership and app assignments against Okta rather than
         // trusting what was captured at the original authorization — otherwise a role revoked,
         // or an app unassigned, since then would never take effect for as long as the client
-        // keeps refreshing (see issue #77).
+        // keeps refreshing (see issue #77). A lookup that fails leaves the user with nothing
+        // rather than what the old token carried, so an outage cannot keep a revoked role or
+        // app alive (see issue #112).
         List<String> currentGroups = fetchCurrentGroups(storedToken.userId(), storedToken.groups());
         List<io.akka.mcp.gateway.domain.UserSession.App> currentApps =
                 fetchCurrentApps(storedToken.userId(), storedToken.apps());
