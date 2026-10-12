@@ -22,7 +22,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Refreshing an MCP token re-reads the user's Okta app assignments. An app that is hidden from the
- * user's dashboard is still an assignment, and a failed lookup must not revoke or invent any.
+ * user's dashboard is still an assignment, and a lookup that runs but fails leaves the user with
+ * no apps rather than the ones the old token carried, so an app unassigned in Okta cannot stay
+ * usable for as long as the failures last (issue #112). A failed lookup still never invents one.
  */
 public class OktaAppsRefreshIntegrationTest extends TestKitSupport {
 
@@ -90,9 +92,9 @@ public class OktaAppsRefreshIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void refresh_keepsStoredAppsWhenOktaRefusesTheLookup() throws Exception {
+    public void refresh_dropsStoredAppsWhenOktaRefusesTheLookup() throws Exception {
         OKTA.respond("/api/v1/apps", 403, "{}");
 
-        assertThat(appsAfterRefreshing()).containsExactly(STORED_APP);
+        assertThat(appsAfterRefreshing()).isEmpty();
     }
 }
