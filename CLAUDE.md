@@ -17,7 +17,7 @@ Use the guidelines in @akka-context/sdk/ai-coding-assistant-guidelines.html.md w
 - Write no comment unless the code is not obvious. Prefer a regression test, or naming and structure that show what the code does.
 - A comment must be terse and describe the code as it is now. Never narrate how it got there, what it used to do, or why a past decision beat an alternative. That belongs in git history and commit messages. No references to "this PR", "this fix", a prior bug, an issue number or an earlier version.
 - Extract a small, single-responsibility method whose name documents intent, within reason.
-- Do not use `null`, `Optional.empty()` or an empty collection as an implicit sentinel for a meaningful special case ("no filter", "use the default", "lookup failed"). Use a named constant, enum or small result type so the case cannot be confused with "absent".
+- Do not use `null` or an empty collection as an implicit sentinel for a meaningful special case ("no filter", "use the default", "lookup failed"). Use a named constant, enum or small result type so the case cannot be confused with "absent".
 - Do not use em dashes in code, comments, docs, commit messages or PR text.
 - Never reach for `synchronized` or `java.util.concurrent.locks.*` first. State belongs in an Akka component. A lock-free workaround is a narrow exception for plain adapter code that wraps a live non-Akka object.
 
