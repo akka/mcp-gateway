@@ -12,6 +12,43 @@ Use the detailed instructions in @AGENTS.md when writing Akka code.
 
 Use the guidelines in @akka-context/sdk/ai-coding-assistant-guidelines.html.md when writing code in this project.
 
+## Code style
+
+- Write no comment unless the code is not obvious. Prefer a regression test, or naming and structure that show what the code does.
+- A comment must be terse and describe the code as it is now. Never narrate how it got there, what it used to do, or why a past decision beat an alternative. That belongs in git history and commit messages. No references to "this PR", "this fix", a prior bug, an issue number or an earlier version.
+- Extract a small, single-responsibility method whose name documents intent, within reason.
+- Do not use `null` or an empty collection as an implicit sentinel for a meaningful special case ("no filter", "use the default", "lookup failed"). Use a named constant, enum or small result type so the case cannot be confused with "absent".
+- Do not use em dashes in code, comments, docs, commit messages or PR text.
+- Never reach for `synchronized` or `java.util.concurrent.locks.*` first. State belongs in an Akka component. A lock-free workaround is a narrow exception for plain adapter code that wraps a live non-Akka object.
+
+## Reviewing a change
+
+Check every PR against these, and say so explicitly when one does not apply.
+
+**Constitution** (`.akka/constitution/akka-sdk-constitution.md`)
+- Akka SDK first: new components and inter-service calls use SDK primitives. A new dependency, or a raw HTTP client where the SDK offers one, needs a stated reason.
+- Single responsibility and domain independence: do not grow an endpoint into a second client for an external system. Put it beside the existing client for that system and share its timeouts, retries and error handling.
+- Test coverage: every behavioral change has tests named for the behavior, including the failure and "not configured" branches.
+- Simplicity: no abstraction for a hypothetical future need.
+
+**Tool list invariant**
+- `tools/list` returns every tool, whatever the caller's role, connection state or the write policy, because MCP clients cache it at connect time and ignore `list_changed`. Only Okta app assignments may shape it.
+- A change that can alter apps on token issue or refresh, including a failed Okta lookup, can shrink the list for the rest of a client session. It needs a test that `tools/list` stays complete.
+- Group and policy changes must be enforced in `tools/call` and never in `tools/list`.
+
+**Security**
+- Fail closed, and keep a failure distinguishable from "none". Check what a failure costs the user and how long it lasts.
+- Never log tokens or secrets. Never send an Okta or upstream token to a host other than the configured one, and do not follow redirects with credentials.
+- Every outbound call has a connect and request timeout. Do the lookups before revoking or rotating a credential, so a slow or failed lookup cannot strand the client.
+- Refresh and token endpoints must not widen access on failure.
+
+**Public repo**
+- This repo is public. Issues, PRs and comments must not contain customer names or details, or content quoted from private repos.
+
+**Verification**
+- CI does not run integration tests, so a green check is not proof. Run the affected `*IntegrationTest` classes locally with `mvn verify -Dit.test=<Class>` and say so in the PR.
+- Run `mvn checkstyle:check`.
+
 ## Akka documentation
 
 You find the reference documentation of Akka in the akka-context directory and sub-directories.
