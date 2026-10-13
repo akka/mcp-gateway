@@ -233,6 +233,8 @@
         function dirBadge(direction) {
             if (direction === 'resp') return '<span class="dir-resp">resp</span>';
             if (direction === 'write-rejected') return '<span class="dir-rejected">write-rejected</span>';
+            if (direction === 'read-rejected') return '<span class="dir-rejected">read-rejected</span>';
+            if (direction === 'rejected') return '<span class="dir-rejected">rejected</span>';
             if (direction === 'policy-change') return '<span class="dir-policy">policy-change</span>';
             return '<span class="dir-req">req</span>';
         }

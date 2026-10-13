@@ -386,7 +386,9 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                     .forEventSourcedEntity(UUID.randomUUID().toString())
                     .method(McpInteractionEntity::record)
                     .invoke(new McpInteractionEntity.RecordCommand(
-                            userEmail, "proxy", toolName, Map.of("reason", "read-not-permitted"), "read-rejected"));
+                            userEmail, client.getMcpId(), toolName,
+                            Map.of("reason", isWrite ? "write-not-permitted" : "read-not-permitted"),
+                            isWrite ? "write-rejected" : "read-rejected"));
             return errorJson(id, -32603, label + " access not permitted");
         }
 
