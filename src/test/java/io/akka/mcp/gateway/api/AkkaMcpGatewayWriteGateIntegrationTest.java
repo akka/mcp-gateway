@@ -4,6 +4,7 @@ import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.akka.mcp.gateway.application.McpInteractionsByMcpView;
 import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer.AdvertisedTool;
@@ -284,6 +285,50 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
             assertThat(e.mcpId()).isEqualTo("okta-admin");
             assertThat(e.tool()).isEqualTo("okta_create_user");
             assertThat(e.params()).contains("mcp-read-only");
+        });
+    }
+
+    @Test
+    public void aReaderAttemptingAWrite_isRecordedAsWriteRejectedUnderTheConnector() throws Exception {
+        var email = "reader-" + UUID.randomUUID() + "@lightbend.com";
+        connectSlack(email);
+
+        callTool(email, "slack_post_message", List.of(READER_GROUP));
+
+        assertThat(awaitInteractions(email, 1)).singleElement().satisfies(e -> {
+            assertThat(e.direction()).isEqualTo("write-rejected");
+            assertThat(e.mcpId()).isEqualTo("slack");
+            assertThat(e.tool()).isEqualTo("slack_post_message");
+            assertThat(e.params()).contains("write-not-permitted");
+        });
+        awaitInteractionUnderConnector("slack", email, "write-rejected");
+    }
+
+    @Test
+    public void aUserWithNoGroupsAttemptingARead_isRecordedAsReadRejectedUnderTheConnector() throws Exception {
+        var email = "no-role-" + UUID.randomUUID() + "@lightbend.com";
+        connectSlack(email);
+
+        callTool(email, "slack_search_messages", List.of());
+
+        assertThat(awaitInteractions(email, 1)).singleElement().satisfies(e -> {
+            assertThat(e.direction()).isEqualTo("read-rejected");
+            assertThat(e.mcpId()).isEqualTo("slack");
+            assertThat(e.tool()).isEqualTo("slack_search_messages");
+            assertThat(e.params()).contains("read-not-permitted");
+        });
+        awaitInteractionUnderConnector("slack", email, "read-rejected");
+    }
+
+    private void awaitInteractionUnderConnector(String mcpId, String email, String direction) {
+        Awaitility.await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            var entries = componentClient.forView()
+                    .method(McpInteractionsByMcpView::getByMcp)
+                    .invoke(new McpInteractionsByMcpView.McpPageRequest(mcpId, 0, 200)).interactions();
+            assertThat(entries).anySatisfy(e -> {
+                assertThat(e.userId()).isEqualTo(email);
+                assertThat(e.direction()).isEqualTo(direction);
+            });
         });
     }
 }
