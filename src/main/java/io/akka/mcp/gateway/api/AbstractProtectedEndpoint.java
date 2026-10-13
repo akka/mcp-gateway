@@ -17,6 +17,8 @@ import io.akka.mcp.gateway.domain.WriteAccess;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 /**
@@ -149,6 +151,11 @@ public abstract class AbstractProtectedEndpoint extends AbstractHttpEndpoint {
         return HttpResponse.create()
                 .withStatus(StatusCodes.FOUND)
                 .addHeader(Location.create("/login"));
+    }
+
+    /** For page routes: after signing in, the browser comes back to {@code returnTo}. */
+    protected HttpResponse redirectToLogin(String returnTo) {
+        return redirectTo("/login?return_to=" + URLEncoder.encode(returnTo, StandardCharsets.UTF_8));
     }
 
     protected HttpResponse unauthorized() {

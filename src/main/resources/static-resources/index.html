@@ -555,9 +555,9 @@
         (function() {
             var params = new URLSearchParams(window.location.search);
             var flash = params.get('flash');
-            if (flash === 'login' || flash === 'already-logged-in') {
+            if (flash === 'already-logged-in') {
                 var el = document.getElementById('flash');
-                el.textContent = flash === 'login' ? 'Signed in successfully.' : 'You are already signed in.';
+                el.textContent = 'You are already signed in.';
                 el.style.display = 'block';
                 history.replaceState(null, '', '/');
             }
