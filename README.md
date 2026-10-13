@@ -147,7 +147,7 @@ The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_M
 
 `OKTA_JWKS_URI` is optional and overrides where Okta sign-in keys are fetched from.
 
-`MCP_PROXY_OKTA_API_TOKEN` is an Okta API token that the gateway uses to look up each user's assigned applications and groups, and for the Okta account-status page. Treat it as required: without it no user is seen as having any application, so every app-gated system is unavailable. The admin role behind the token must be able to read users, groups and applications. If Okta refuses the applications lookup, the gateway logs an error that names this token.
+`MCP_PROXY_OKTA_API_TOKEN` is an Okta API token that the gateway uses to look up each user's assigned applications and groups, and for the Okta account-status page. Treat it as required: without it no user is seen as having any application, so every app-gated system is unavailable. The admin role behind the token must be able to read users, groups and applications. If Okta refuses the groups or applications lookup, the gateway logs an error that names this token.
 
 ## Seeing what happened
 
@@ -171,6 +171,8 @@ Reader and writer are independent, not tiered. If you only hold `mcp-gateway-rea
 
 One important detail: if the gateway cannot tell whether a tool reads or writes, it treats that tool as a **write**. This is deliberate — it fails safe. In practice it means a reader may occasionally be refused a tool that looks harmless, usually right after the gateway restarts and before it has re-learned the tool list.
 
+Your groups are re-read from Okta every time your assistant renews its connection, which is roughly hourly, so a role IT removes stops working without you having to do anything. If that check, or the applications check below, cannot complete (Okta is down, rate limiting us, or refusing our token), you are treated as holding no groups at all. This too fails safe: a revoked role cannot stay alive through an outage. Your tool calls are refused until a renewal reaches Okta again, and the gateway asks your assistant to renew within about a minute, so this usually clears on its own. Your assistant stays connected the whole time and its tool list does not change.
+
 ### Applications decide which systems you see
 
 Every system is tied to an Okta application. Being assigned that application is what puts the system in the **accessible** list on your dashboard; without it the system appears as unavailable and you should ask IT to assign it to you.
@@ -189,6 +191,8 @@ Every system is tied to an Okta application. Being assigned that application is 
 
 An application counts as assigned when it is active and assigned to you, whether or not its icon is shown on your Okta dashboard. That lets an application exist only to give the gateway access to a system.
 
+Application assignments are re-read on renewal too. If that check cannot complete, you keep the applications you had, so the tool list stays complete, but you hold no groups until a renewal succeeds, so every tool call is refused in the meantime.
+
 Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
 
 ### Systems decide whether writes are possible
@@ -203,9 +207,9 @@ Enabling a system is a deliberate decision: review the OAuth scopes users grant 
 
 The tool list does not depend on your role, on which systems have writes enabled, or, once anyone has connected a system, on whether you have. A tool you cannot use yet is still listed, and calling it returns an error saying what is wrong: not connected, read-only through the gateway, or write access not permitted.
 
-This is deliberate. Assistants fetch the tool list once, when they connect, and the main ones ignore "tool list changed" notifications, so a list that varied would stay stale until the assistant was restarted. The one thing that shapes it is your Okta application assignments, fixed at sign-in. For a system nobody has connected yet there is nothing to list, so its tools appear after the first connection (restart the assistant, or have it call `howto_refresh_tools`).
+This is deliberate. Assistants fetch the tool list once, when they connect, and the main ones ignore "tool list changed" notifications, so a list that varied would stay stale until the assistant was restarted. The one thing that shapes it is your Okta application assignments, read at sign-in and on each renewal; a renewal that cannot reach Okta leaves them as they were. For a system nobody has connected yet there is nothing to list, so its tools appear after the first connection (restart the assistant, or have it call `howto_refresh_tools`).
 
-`AkkaMcpGatewayWriteGateIntegrationTest` pins this behaviour.
+`AkkaMcpGatewayWriteGateIntegrationTest` pins this behaviour, and `OktaAppsRefreshIntegrationTest` pins it across a renewal that cannot reach Okta.
 
 ### Connecting is still per-person
 

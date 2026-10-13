@@ -71,7 +71,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
     private final String endSessionEndpoint;
     private final String oktaBaseUrl;
     private final String oktaApiToken;
-    private final OktaAssignedApps oktaAssignedApps;
+    private final OktaDirectory oktaDirectory;
     private final String allowedEmailDomain;
 
     public record InitiateRequest(String email) {}
@@ -134,7 +134,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
             }
         }
         this.oktaBaseUrl = baseUrl;
-        this.oktaAssignedApps = new OktaAssignedApps(baseUrl, oktaApiToken);
+        this.oktaDirectory = new OktaDirectory(baseUrl, oktaApiToken);
     }
 
     @Get("")
@@ -330,8 +330,8 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
                             "User info fetch failed: " + e.getMessage());
         }
 
-        var lookedUpApps = oktaAssignedApps.forSubjectOrEmail(subject, email);
-        if (!oktaAssignedApps.isConfigured()) {
+        var lookedUpApps = oktaDirectory.appsForSubjectOrEmail(subject, email);
+        if (!oktaDirectory.isConfigured()) {
             log.warn("Okta apps: skipping, MCP_PROXY_OKTA_API_TOKEN or OKTA_ISSUER_URL is blank");
         } else if (lookedUpApps.isEmpty()) {
             log.warn("Okta apps: lookup did not complete for {}, so they are treated as having no apps", email);
