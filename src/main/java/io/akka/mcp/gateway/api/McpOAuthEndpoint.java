@@ -20,6 +20,7 @@ import io.akka.mcp.gateway.application.OAuthPendingAuthorizationEntity;
 import io.akka.mcp.gateway.application.OAuthRefreshTokenEntity;
 import io.akka.mcp.gateway.application.OidcPendingLoginEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
+import io.akka.mcp.gateway.domain.OAuthRefreshToken;
 import io.akka.mcp.gateway.domain.UserSession;
 
 import java.net.URLEncoder;
@@ -32,6 +33,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -136,25 +138,32 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         this.oktaAssignedApps = new OktaAssignedApps(base, oktaApiToken);
     }
 
+    /** Groups, apps and access token lifetime for the tokens a refresh issues. */
+    private record RefreshedAccess(List<String> groups, List<UserSession.App> apps, long accessTokenTtlSeconds) {}
+
     /**
-     * Re-fetches the user's current Okta group membership via the Admin API, rather than
-     * trusting the (potentially stale) groups captured at the original authorization. Without
-     * this, a refresh_token grant would keep re-stamping whatever groups existed when the MCP
-     * client first authorized, so a role revoked in Okta later would never take effect for as
-     * long as the client keeps refreshing.
-     *
-     * A lookup that runs but fails yields no groups at all, not the stored ones: keeping those
-     * would hold a role that Okta has since revoked open for as long as the failures last, and
-     * every refresh would renew it. The refresh itself still succeeds, so the client keeps a
-     * usable token and is refused every tool call until a later lookup succeeds (issue #112).
-     * The stored groups only stand when the lookup isn't configured at all, since sign-in then
-     * takes groups from the OIDC {@code Entitlements} claim without ever consulting the API
-     * token, and failing closed would strip roles where nothing is actually broken.
+     * Re-reads the user's groups and apps from Okta. When a lookup fails the user keeps the stored
+     * apps, so {@code tools/list} stays complete, but gets no groups, so every {@code tools/call}
+     * is refused, and a short-lived access token, so the next lookup comes soon. The stored values
+     * stand only when the lookup is not configured.
      */
-    private List<String> fetchCurrentGroups(String email, List<String> fallback) {
-        if (oktaApiToken.isBlank() || oktaBaseUrl.isBlank() || email == null || email.isBlank()) {
-            return fallback;
+    private RefreshedAccess currentAccess(OAuthRefreshToken stored) {
+        if (!oktaAssignedApps.isConfigured()) {
+            return new RefreshedAccess(stored.groups(), stored.apps(), ACCESS_TOKEN_TTL_SECONDS);
         }
+        var groups = fetchCurrentGroups(stored.userId());
+        var apps = groups.isPresent() ? oktaAssignedApps.forUser(stored.userId()) : Optional.<List<UserSession.App>>empty();
+        if (groups.isEmpty() || apps.isEmpty()) {
+            log.warn("Okta refresh: lookup did not complete for {}, so they hold no groups until the next refresh",
+                    stored.userId());
+            return new RefreshedAccess(List.of(), stored.apps(), LOOKUP_FAILED_ACCESS_TOKEN_TTL_SECONDS);
+        }
+        return new RefreshedAccess(groups.get(), apps.get(), ACCESS_TOKEN_TTL_SECONDS);
+    }
+
+    /** Empty when the lookup could not be completed, so callers can tell that from "no groups". */
+    private Optional<List<String>> fetchCurrentGroups(String email) {
+        if (email == null || email.isBlank()) return Optional.empty();
         try {
             var encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
             var request = java.net.http.HttpRequest.newBuilder()
@@ -165,52 +174,28 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                     .GET().build();
             var resp = HTTP_CLIENT.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() != 200) {
-                log.warn("Okta groups refresh: status={} for {}, so they are treated as having no groups",
-                        resp.statusCode(), email);
-                return List.of();
+                log.warn("Okta groups refresh: status={} for {}", resp.statusCode(), email);
+                return Optional.empty();
             }
             var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
             if (!json.isArray()) {
-                log.warn("Okta groups refresh: response for {} is not a JSON array,"
-                        + " so they are treated as having no groups", email);
-                return List.of();
+                log.warn("Okta groups refresh: response for {} is not a JSON array", email);
+                return Optional.empty();
             }
             var groups = new java.util.ArrayList<String>();
             for (var g : json) {
                 var name = g.path("profile").path("name").asText("");
                 if (!name.isBlank() && !groups.contains(name)) groups.add(name);
             }
-            return groups;
+            return Optional.of(groups);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("Okta groups refresh interrupted for {}, so they are treated as having no groups", email);
-            return List.of();
+            log.warn("Okta groups refresh interrupted for {}", email);
+            return Optional.empty();
         } catch (Exception e) {
-            log.warn("Okta groups refresh failed for {}: {}, so they are treated as having no groups",
-                    email, e.getMessage());
-            return List.of();
+            log.warn("Okta groups refresh failed for {}: {}", email, e.getMessage());
+            return Optional.empty();
         }
-    }
-
-    /**
-     * Re-fetches the user's current Okta app assignments, mirroring {@link #fetchCurrentGroups}.
-     * Without this, app-gated tools (okta-admin especially) would silently disappear on the next
-     * refresh, since the refresh grant doesn't otherwise know which apps are currently assigned.
-     *
-     * A failed lookup means the same here as for the groups above: no apps, which is what
-     * sign-in already does, so an app unassigned in Okta cannot stay usable through an outage.
-     * The stored apps only stand when the lookup isn't configured at all.
-     */
-    private List<io.akka.mcp.gateway.domain.UserSession.App> fetchCurrentApps(
-            String email, List<io.akka.mcp.gateway.domain.UserSession.App> fallback) {
-        if (!oktaAssignedApps.isConfigured()) {
-            return fallback;
-        }
-        var apps = oktaAssignedApps.forUser(email);
-        if (apps.isEmpty()) {
-            log.warn("Okta apps refresh: lookup did not complete for {}, so they are treated as having no apps", email);
-        }
-        return apps.orElse(List.of());
     }
 
     // ── Dynamic Client Registration ─────────────────────────────────────────
@@ -503,6 +488,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
     // ── Token Endpoint ───────────────────────────────────────────────────────
 
     private static final long ACCESS_TOKEN_TTL_SECONDS = 3600; // 1 hour
+    private static final long LOOKUP_FAILED_ACCESS_TOKEN_TTL_SECONDS = 60;
     private static final long REFRESH_TOKEN_TTL_DAYS   = 30;
 
     public record TokenResponse(String access_token, String token_type, long expires_in, String refresh_token) {}
@@ -606,30 +592,22 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         componentClient.forKeyValueEntity(refreshTokenValue)
                 .method(OAuthRefreshTokenEntity::revoke).invoke();
 
-        // Re-check current group membership and app assignments against Okta rather than
-        // trusting what was captured at the original authorization — otherwise a role revoked,
-        // or an app unassigned, since then would never take effect for as long as the client
-        // keeps refreshing (see issue #77). A lookup that fails leaves the user with nothing
-        // rather than what the old token carried, so an outage cannot keep a revoked role or
-        // app alive (see issue #112).
-        List<String> currentGroups = fetchCurrentGroups(storedToken.userId(), storedToken.groups());
-        List<io.akka.mcp.gateway.domain.UserSession.App> currentApps =
-                fetchCurrentApps(storedToken.userId(), storedToken.apps());
+        var access = currentAccess(storedToken);
 
         // Issue a new MCP access token for the user (not a browser session — see McpAccessToken).
         String newAccessToken = issueMcpAccessToken(
-                storedToken.userId(), storedToken.displayName(), currentGroups, currentApps,
-                clientId, Instant.now().plusSeconds(ACCESS_TOKEN_TTL_SECONDS));
+                storedToken.userId(), storedToken.displayName(), access.groups(), access.apps(),
+                clientId, Instant.now().plusSeconds(access.accessTokenTtlSeconds()));
 
         // Issue a new refresh token
         String newRefreshToken = issueRefreshToken(
                 storedToken.userId(), storedToken.displayName(),
-                clientId, currentGroups, currentApps, storedToken.idToken());
+                clientId, access.groups(), access.apps(), storedToken.idToken());
 
         return HttpResponse.create()
                 .withStatus(StatusCodes.OK)
-                .withEntity(ContentTypes.APPLICATION_JSON,
-                        toJson(new TokenResponse(newAccessToken, "Bearer", ACCESS_TOKEN_TTL_SECONDS, newRefreshToken)));
+                .withEntity(ContentTypes.APPLICATION_JSON, toJson(new TokenResponse(
+                        newAccessToken, "Bearer", access.accessTokenTtlSeconds(), newRefreshToken)));
     }
 
     private String issueMcpAccessToken(
