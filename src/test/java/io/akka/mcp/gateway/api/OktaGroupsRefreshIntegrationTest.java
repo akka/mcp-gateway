@@ -24,13 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Refreshing an MCP token re-reads the user's Okta group membership. A lookup that runs but fails
- * leaves the user with no groups rather than the ones the old token carried: keeping those would
- * hold a since-revoked role open for as long as the failures last, and every refresh would renew
- * it (issue #112). The refresh itself still succeeds, so the client keeps a usable token and is
- * refused tool calls until a later lookup succeeds.
- */
+/** Refreshing an MCP token re-reads the user's Okta group membership. */
 public class OktaGroupsRefreshIntegrationTest extends TestKitSupport {
 
     private static final String EMAIL = "user@lightbend.com";
@@ -129,10 +123,6 @@ public class OktaGroupsRefreshIntegrationTest extends TestKitSupport {
         assertThat(refreshed().groups()).isEmpty();
     }
 
-    /**
-     * The point of failing closed rather than failing the grant: the client is not locked out, it
-     * just holds a token with no roles, so it recovers on the next refresh that reaches Okta.
-     */
     @Test
     public void refresh_stillIssuesAUsableTokenWhenTheGroupsLookupFails() throws Exception {
         OKTA.respond(GROUPS_PATH, 500, "{}");

@@ -127,7 +127,6 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         this.oktaDirectory = new OktaDirectory(base, config.getString("okta.api-token"));
     }
 
-    /** Groups, apps and access token lifetime for the tokens a refresh issues. */
     private record RefreshedAccess(List<String> groups, List<UserSession.App> apps, long accessTokenTtlSeconds) {}
 
     /**
