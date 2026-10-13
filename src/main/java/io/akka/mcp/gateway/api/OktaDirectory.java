@@ -22,15 +22,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Looks up the active Okta applications assigned to a user.
+ * Looks up a user's Okta groups and active assigned applications.
  *
- * Uses the apps API rather than {@code /users/{id}/appLinks}: appLinks only returns what the user
+ * Apps come from the apps API rather than {@code /users/{id}/appLinks}: appLinks only returns what the user
  * would see on their dashboard, so an app with its icon hidden (such as an app that exists only to
  * be reached through the gateway) would be treated as unassigned.
  */
-final class OktaAssignedApps {
+final class OktaDirectory {
 
-    private static final Logger log = LoggerFactory.getLogger(OktaAssignedApps.class);
+    private static final Logger log = LoggerFactory.getLogger(OktaDirectory.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -38,7 +38,7 @@ final class OktaAssignedApps {
     private static final Pattern NEXT_LINK = Pattern.compile("<([^>]+)>\\s*;\\s*rel=\"next\"");
     private static final String OKTA_USER_ID_PREFIX = "00u";
     private static final String ACTIVE = "ACTIVE";
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
+    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(15);
     private static final int PAGE_SIZE = 200;
     private static final int MAX_PAGES = 20;
     private static final int MAX_RATE_LIMIT_RETRIES = 2;
@@ -49,58 +49,81 @@ final class OktaAssignedApps {
     private final String oktaBaseUrl;
     private final String oktaApiToken;
     private final Consumer<Duration> pause;
+    private final Duration requestTimeout;
 
-    OktaAssignedApps(String oktaBaseUrl, String oktaApiToken) {
-        this(oktaBaseUrl, oktaApiToken, OktaAssignedApps::sleep);
+    OktaDirectory(String oktaBaseUrl, String oktaApiToken) {
+        this(oktaBaseUrl, oktaApiToken, OktaDirectory::sleep);
     }
 
-    OktaAssignedApps(String oktaBaseUrl, String oktaApiToken, Consumer<Duration> pause) {
+    OktaDirectory(String oktaBaseUrl, String oktaApiToken, Consumer<Duration> pause) {
+        this(oktaBaseUrl, oktaApiToken, pause, DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    OktaDirectory(String oktaBaseUrl, String oktaApiToken, Consumer<Duration> pause, Duration requestTimeout) {
         this.oktaBaseUrl = oktaBaseUrl;
         this.oktaApiToken = oktaApiToken;
         this.pause = pause;
+        this.requestTimeout = requestTimeout;
     }
 
     boolean isConfigured() {
         return !oktaBaseUrl.isBlank() && !oktaApiToken.isBlank();
     }
 
-    /** Empty when the lookup could not be completed, so callers can tell that from "no apps". */
-    Optional<List<UserSession.App>> forUser(String email) {
+    /** Empty when the lookup could not be completed, so callers can tell that from "no groups". */
+    Optional<List<String>> groupsFor(String email) {
         if (!isConfigured() || email == null || email.isBlank()) return Optional.empty();
-        return completeLookup(() -> assignedApps(userIdOf(email)));
+        return completeLookup("groups", () -> groupNames(email));
+    }
+
+    /** Empty when the lookup could not be completed, so callers can tell that from "no apps". */
+    Optional<List<UserSession.App>> appsFor(String email) {
+        if (!isConfigured() || email == null || email.isBlank()) return Optional.empty();
+        return completeLookup("apps", () -> assignedApps(userIdOf(email)));
     }
 
     /**
      * At sign-in the OIDC subject already is the Okta user id, which saves the lookup by email.
      * Anything that does not look like one falls back to the email lookup.
      */
-    Optional<List<UserSession.App>> forSubjectOrEmail(String subject, String email) {
+    Optional<List<UserSession.App>> appsForSubjectOrEmail(String subject, String email) {
         if (!isConfigured()) return Optional.empty();
         if (subject != null && subject.startsWith(OKTA_USER_ID_PREFIX)) {
-            return completeLookup(() -> assignedApps(subject));
+            return completeLookup("apps", () -> assignedApps(subject));
         }
-        return forUser(email);
+        return appsFor(email);
     }
 
-    private Optional<List<UserSession.App>> completeLookup(Callable<List<UserSession.App>> lookup) {
+    private <T> Optional<List<T>> completeLookup(String what, Callable<List<T>> lookup) {
         try {
             return Optional.of(lookup.call());
         } catch (TokenRefused e) {
-            log.error("Okta refused the apps lookup (HTTP {}). MCP_PROXY_OKTA_API_TOKEN must belong to an admin role"
-                    + " that can read applications. Until that is fixed no user is seen as having any app, so every"
-                    + " app-gated system is unavailable.", e.status);
+            log.error("Okta refused the {} lookup (HTTP {}). MCP_PROXY_OKTA_API_TOKEN must belong to an admin role"
+                    + " that can read users, groups and applications. Until that is fixed users get no {}.",
+                    what, e.status, what);
             return Optional.empty();
         } catch (LookupFailed e) {
-            log.warn("Okta apps lookup failed: {}", e.getMessage());
+            log.warn("Okta {} lookup failed: {}", what, e.getMessage());
             return Optional.empty();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("Okta apps lookup interrupted");
+            log.warn("Okta {} lookup interrupted", what);
             return Optional.empty();
         } catch (Exception e) {
-            log.warn("Okta apps lookup failed", e);
+            log.warn("Okta {} lookup failed", what, e);
             return Optional.empty();
         }
+    }
+
+    private List<String> groupNames(String email) throws Exception {
+        var json = MAPPER.readTree(get(URI.create(oktaBaseUrl + "/api/v1/users/" + encode(email) + "/groups")).body());
+        if (!json.isArray()) throw new LookupFailed("the groups response is not a JSON array");
+        var groups = new ArrayList<String>();
+        for (var group : json) {
+            var name = group.path("profile").path("name").asText("");
+            if (!name.isBlank() && !groups.contains(name)) groups.add(name);
+        }
+        return List.copyOf(groups);
     }
 
     private String userIdOf(String email) throws Exception {
@@ -151,7 +174,7 @@ final class OktaAssignedApps {
             var resp = HTTP_CLIENT.send(
                     HttpRequest.newBuilder()
                             .uri(uri)
-                            .timeout(REQUEST_TIMEOUT)
+                            .timeout(requestTimeout)
                             .header("Authorization", "SSWS " + oktaApiToken)
                             .header("Accept", "application/json")
                             .GET().build(),
@@ -171,7 +194,7 @@ final class OktaAssignedApps {
 
     private static Duration rateLimitWait(HttpResponse<String> resp) {
         var wait = resp.headers().firstValue("x-rate-limit-reset")
-                .map(OktaAssignedApps::secondsUntilEpoch)
+                .map(OktaDirectory::secondsUntilEpoch)
                 .orElse(MIN_RATE_LIMIT_WAIT);
         if (wait.compareTo(MIN_RATE_LIMIT_WAIT) < 0) return MIN_RATE_LIMIT_WAIT;
         return wait.compareTo(MAX_RATE_LIMIT_WAIT) > 0 ? MAX_RATE_LIMIT_WAIT : wait;

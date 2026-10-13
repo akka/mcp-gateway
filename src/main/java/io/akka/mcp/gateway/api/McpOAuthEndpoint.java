@@ -69,13 +69,6 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
 
     private static final Logger log = LoggerFactory.getLogger(McpOAuthEndpoint.class);
 
-    /**
-     * Shared rather than built per call, and bounded on both ends: a default
-     * {@code HttpClient} waits forever to connect and forever for an answer, so an Okta that
-     * black-holes the request would hang the {@code /oauth2/token} exchange with it and the
-     * client would get no token at all instead of a prompt one with no permissions. Matches the
-     * timeouts {@link OktaAssignedApps} uses for the apps lookup.
-     */
     private static final java.net.http.HttpClient HTTP_CLIENT = java.net.http.HttpClient.newBuilder()
             .connectTimeout(java.time.Duration.ofSeconds(10))
             .build();
@@ -85,9 +78,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
     private final String oktaAuthorizationEndpoint;
     private final String oktaClientId;
     private final String oktaRedirectUri;
-    private final String oktaBaseUrl;
-    private final String oktaApiToken;
-    private final OktaAssignedApps oktaAssignedApps;
+    private final OktaDirectory oktaDirectory;
     private final List<String> redirectHostAllowlist;
 
     public McpOAuthEndpoint(ComponentClient componentClient, Config config) {
@@ -95,7 +86,6 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         this.baseUrl = mcpBaseUrl;
         this.oktaClientId = config.getString("okta.client-id");
         this.oktaRedirectUri = config.getString("okta.redirect-uri");
-        this.oktaApiToken = config.getString("okta.api-token");
         this.redirectHostAllowlist = java.util.Arrays.stream(config.getString("mcp.oauth.redirect-host-allowlist").split(","))
                 .map(String::trim)
                 .map(s -> s.toLowerCase(java.util.Locale.ROOT))
@@ -134,8 +124,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                 log.warn("Could not parse OKTA_ISSUER_URL for base URL: {}", e.getMessage());
             }
         }
-        this.oktaBaseUrl = base;
-        this.oktaAssignedApps = new OktaAssignedApps(base, oktaApiToken);
+        this.oktaDirectory = new OktaDirectory(base, config.getString("okta.api-token"));
     }
 
     /** Groups, apps and access token lifetime for the tokens a refresh issues. */
@@ -148,54 +137,17 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
      * stand only when the lookup is not configured.
      */
     private RefreshedAccess currentAccess(OAuthRefreshToken stored) {
-        if (!oktaAssignedApps.isConfigured()) {
+        if (!oktaDirectory.isConfigured()) {
             return new RefreshedAccess(stored.groups(), stored.apps(), ACCESS_TOKEN_TTL_SECONDS);
         }
-        var groups = fetchCurrentGroups(stored.userId());
-        var apps = groups.isPresent() ? oktaAssignedApps.forUser(stored.userId()) : Optional.<List<UserSession.App>>empty();
+        var groups = oktaDirectory.groupsFor(stored.userId());
+        var apps = groups.isPresent() ? oktaDirectory.appsFor(stored.userId()) : Optional.<List<UserSession.App>>empty();
         if (groups.isEmpty() || apps.isEmpty()) {
             log.warn("Okta refresh: lookup did not complete for {}, so they hold no groups until the next refresh",
                     stored.userId());
             return new RefreshedAccess(List.of(), stored.apps(), LOOKUP_FAILED_ACCESS_TOKEN_TTL_SECONDS);
         }
         return new RefreshedAccess(groups.get(), apps.get(), ACCESS_TOKEN_TTL_SECONDS);
-    }
-
-    /** Empty when the lookup could not be completed, so callers can tell that from "no groups". */
-    private Optional<List<String>> fetchCurrentGroups(String email) {
-        if (email == null || email.isBlank()) return Optional.empty();
-        try {
-            var encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
-            var request = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create(oktaBaseUrl + "/api/v1/users/" + encodedEmail + "/groups"))
-                    .timeout(OKTA_REQUEST_TIMEOUT)
-                    .header("Authorization", "SSWS " + oktaApiToken)
-                    .header("Accept", "application/json")
-                    .GET().build();
-            var resp = HTTP_CLIENT.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() != 200) {
-                log.warn("Okta groups refresh: status={} for {}", resp.statusCode(), email);
-                return Optional.empty();
-            }
-            var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
-            if (!json.isArray()) {
-                log.warn("Okta groups refresh: response for {} is not a JSON array", email);
-                return Optional.empty();
-            }
-            var groups = new java.util.ArrayList<String>();
-            for (var g : json) {
-                var name = g.path("profile").path("name").asText("");
-                if (!name.isBlank() && !groups.contains(name)) groups.add(name);
-            }
-            return Optional.of(groups);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("Okta groups refresh interrupted for {}", email);
-            return Optional.empty();
-        } catch (Exception e) {
-            log.warn("Okta groups refresh failed for {}: {}", email, e.getMessage());
-            return Optional.empty();
-        }
     }
 
     // ── Dynamic Client Registration ─────────────────────────────────────────
