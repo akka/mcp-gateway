@@ -7,6 +7,7 @@ import io.akka.mcp.gateway.application.McpAccessTokenEntity;
 import io.akka.mcp.gateway.application.OAuthRefreshTokenEntity;
 import io.akka.mcp.gateway.domain.UserSession;
 import io.akka.mcp.gateway.testsupport.FakeOkta;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,8 @@ import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -63,15 +66,18 @@ public class OktaGroupsRefreshIntegrationTest extends TestKitSupport {
 
     private record Refreshed(int status, List<String> groups, String accessToken) {}
 
-    private Refreshed refreshed() throws Exception {
+    private String storedRefreshToken() {
         var refreshToken = UUID.randomUUID().toString();
         componentClient.forKeyValueEntity(refreshToken)
                 .method(OAuthRefreshTokenEntity::create)
                 .invoke(new OAuthRefreshTokenEntity.CreateCommand(
                         refreshToken, EMAIL, "User", CLIENT_ID, List.of(STORED_GROUP),
                         Instant.now().plusSeconds(3600), List.of(STORED_APP), ""));
+        return refreshToken;
+    }
 
-        var response = HTTP.send(
+    private CompletableFuture<HttpResponse<String>> refreshing(String refreshToken) {
+        return HTTP.sendAsync(
                 HttpRequest.newBuilder()
                         .uri(URI.create("http://localhost:" + testKit.getPort() + "/oauth2/token"))
                         .header("Content-Type", "application/x-www-form-urlencoded")
@@ -79,6 +85,10 @@ public class OktaGroupsRefreshIntegrationTest extends TestKitSupport {
                                 "grant_type=refresh_token&refresh_token=" + refreshToken + "&client_id=" + CLIENT_ID))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
+    }
+
+    private Refreshed refreshed() throws Exception {
+        var response = refreshing(storedRefreshToken()).get(30, TimeUnit.SECONDS);
 
         var body = MAPPER.readTree(response.body());
         var newRefreshToken = body.path("refresh_token").asText();
@@ -87,6 +97,13 @@ public class OktaGroupsRefreshIntegrationTest extends TestKitSupport {
                 .invoke()
                 .groups();
         return new Refreshed(response.statusCode(), groups, body.path("access_token").asText());
+    }
+
+    private boolean isValid(String refreshToken) {
+        return componentClient.forKeyValueEntity(refreshToken)
+                .method(OAuthRefreshTokenEntity::get)
+                .invoke()
+                .isValid();
     }
 
     @Test
@@ -131,5 +148,20 @@ public class OktaGroupsRefreshIntegrationTest extends TestKitSupport {
         assertThat(accessToken.isExpired()).isFalse();
         assertThat(accessToken.userId()).isEqualTo(EMAIL);
         assertThat(accessToken.groups()).isEmpty();
+    }
+
+    @Test
+    public void refresh_keepsTheOldRefreshTokenValidUntilTheOktaLookupsAnswer() throws Exception {
+        OKTA.respond(GROUPS_PATH, 200, "[]").hold(GROUPS_PATH);
+        var refreshToken = storedRefreshToken();
+
+        var response = refreshing(refreshToken);
+        Awaitility.await().atMost(10, TimeUnit.SECONDS).until(() ->
+                OKTA.requests().stream().anyMatch(r -> r.pathAndQuery().startsWith(GROUPS_PATH)));
+
+        assertThat(isValid(refreshToken)).isTrue();
+        OKTA.release();
+        assertThat(response.get(30, TimeUnit.SECONDS).statusCode()).isEqualTo(200);
+        assertThat(isValid(refreshToken)).isFalse();
     }
 }

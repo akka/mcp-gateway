@@ -588,11 +588,11 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
             return tokenError(StatusCodes.BAD_REQUEST, "invalid_client", "client_id does not match");
         }
 
+        var access = currentAccess(storedToken);
+
         // Revoke old refresh token (rotation)
         componentClient.forKeyValueEntity(refreshTokenValue)
                 .method(OAuthRefreshTokenEntity::revoke).invoke();
-
-        var access = currentAccess(storedToken);
 
         // Issue a new MCP access token for the user (not a browser session — see McpAccessToken).
         String newAccessToken = issueMcpAccessToken(
