@@ -14,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A stand-in for the Okta management API. Tests script the answer for a path (an exact path wins
@@ -39,6 +41,8 @@ public final class FakeOkta implements AutoCloseable {
     private final HttpServer server;
     private final Map<String, Deque<Reply>> replies = new LinkedHashMap<>();
     private final List<ReceivedRequest> requests = new CopyOnWriteArrayList<>();
+    private volatile CountDownLatch gate = new CountDownLatch(0);
+    private volatile String heldPath = "";
 
     private FakeOkta(HttpServer server) {
         this.server = server;
@@ -71,8 +75,21 @@ public final class FakeOkta implements AutoCloseable {
     }
 
     public synchronized FakeOkta reset() {
+        release();
         replies.clear();
         requests.clear();
+        return this;
+    }
+
+    /** Requests to the path are recorded but not answered until {@link #release()}. */
+    public FakeOkta hold(String path) {
+        heldPath = path;
+        gate = new CountDownLatch(1);
+        return this;
+    }
+
+    public FakeOkta release() {
+        gate.countDown();
         return this;
     }
 
@@ -84,6 +101,7 @@ public final class FakeOkta implements AutoCloseable {
         requests.add(new ReceivedRequest(
                 URLDecoder.decode(exchange.getRequestURI().toString(), StandardCharsets.UTF_8),
                 exchange.getRequestHeaders().getFirst("Authorization")));
+        if (exchange.getRequestURI().getPath().equals(heldPath)) awaitRelease();
         var reply = nextReplyFor(exchange.getRequestURI().getPath());
         reply.headers().forEach((name, value) -> exchange.getResponseHeaders().add(name, value));
         var bytes = reply.body().getBytes(StandardCharsets.UTF_8);
@@ -105,8 +123,17 @@ public final class FakeOkta implements AutoCloseable {
         return queue.size() > 1 ? queue.poll() : queue.peek();
     }
 
+    private void awaitRelease() {
+        try {
+            gate.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     @Override
     public void close() {
+        release();
         server.stop(0);
     }
 }
