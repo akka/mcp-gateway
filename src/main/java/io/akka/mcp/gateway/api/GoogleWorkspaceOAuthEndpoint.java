@@ -13,6 +13,7 @@ import io.akka.mcp.gateway.application.WorkspaceCalendarMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceDocsMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceDriveMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceGmailMcpClient;
+import io.akka.mcp.gateway.application.WorkspaceSheetsMcpClient;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +26,7 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     private static final String GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
     private static final String GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
-    // Union of scopes for Drive, Docs, Gmail, Calendar — grant them together under one client-id so a file
+    // Union of scopes for Drive, Docs, Sheets, Gmail, Calendar — grant them together under one client-id so a file
     // touched by one product's MCP is reachable from the others (drive.file is per-client-id, not per-server).
     // Narrowest set covering the hosted servers' tools, per
     // https://developers.google.com/workspace/guides/configure-mcp-servers — no full `drive`, no
@@ -33,10 +34,11 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     private static final String GOOGLE_WORKSPACE_SCOPE = String.join(" ",
             "openid",
             "email",
-            // Drive + Docs: read anything, write only files the app created or the user opened with it
+            // Drive + Docs + Sheets: read anything, write only files the app created or the user opened with it
             "https://www.googleapis.com/auth/drive.readonly",
             "https://www.googleapis.com/auth/drive.file",
             "https://www.googleapis.com/auth/documents",
+            "https://www.googleapis.com/auth/spreadsheets",
             // Gmail: search/read and drafts. No gmail.modify, so applying/removing labels is deliberately
             // unsupported. Note gmail.compose also permits sending mail.
             "https://www.googleapis.com/auth/gmail.readonly",
@@ -52,6 +54,7 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     private final String oktaAppId;
     private final String driveMcpUrl;
     private final String docsMcpUrl;
+    private final String sheetsMcpUrl;
     private final String gmailMcpUrl;
     private final String calendarMcpUrl;
 
@@ -63,6 +66,7 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         this.oktaAppId = config.getString("google-workspace.okta-app-id");
         this.driveMcpUrl = config.getString("google-workspace.drive.mcp-url");
         this.docsMcpUrl = config.getString("google-workspace.docs.mcp-url");
+        this.sheetsMcpUrl = config.getString("google-workspace.sheets.mcp-url");
         this.gmailMcpUrl = config.getString("google-workspace.gmail.mcp-url");
         this.calendarMcpUrl = config.getString("google-workspace.calendar.mcp-url");
     }
@@ -149,6 +153,7 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
         return List.of(
                 new WorkspaceDriveMcpClient(componentClient, driveMcpUrl, oktaAppId),
                 new WorkspaceDocsMcpClient(componentClient, docsMcpUrl, oktaAppId),
+                new WorkspaceSheetsMcpClient(componentClient, sheetsMcpUrl, oktaAppId),
                 new WorkspaceGmailMcpClient(componentClient, gmailMcpUrl, oktaAppId),
                 new WorkspaceCalendarMcpClient(componentClient, calendarMcpUrl, oktaAppId));
     }

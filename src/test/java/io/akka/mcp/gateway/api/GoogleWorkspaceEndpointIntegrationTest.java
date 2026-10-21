@@ -109,17 +109,18 @@ public class GoogleWorkspaceEndpointIntegrationTest extends TestKitSupport {
     }
 
     /**
-     * The four Workspace MCP clients (Drive/Docs/Gmail/Calendar) each register under their own mcpId
+     * The five Workspace MCP clients (Drive/Docs/Sheets/Gmail/Calendar) each register under their own mcpId
      * but share the single GoogleWorkspaceConnectionEntity for authentication. When their tools are
-     * warmed into the registry cache, tools/list must surface tools from all four — this is the
-     * evidence that one OAuth grant fans out to the four downstream Google MCP servers.
+     * warmed into the registry cache, tools/list must surface tools from all five: one OAuth grant
+     * fans out to the five downstream Google MCP servers.
      */
     @Test
-    public void toolsList_surfacesCachedToolsForAllFourWorkspaceMcps() throws Exception {
+    public void toolsList_surfacesCachedToolsForAllFiveWorkspaceMcps() throws Exception {
         record Cached(String mcpId, String mcpName, String toolName) {}
         var cached = List.of(
                 new Cached("google-workspace-drive",    "Google Workspace — Drive",    "Workspace_GoogleDrive_search_files"),
                 new Cached("google-workspace-docs",     "Google Workspace — Docs",     "Workspace_GoogleDocs_read_doc"),
+                new Cached("google-workspace-sheets",   "Google Workspace — Sheets",   "Workspace_GoogleSheets_get_values"),
                 new Cached("google-workspace-gmail",    "Google Workspace — Gmail",    "Workspace_Gmail_search_threads"),
                 new Cached("google-workspace-calendar", "Google Workspace — Calendar", "Workspace_GoogleCalendar_list_events"));
 
@@ -146,6 +147,7 @@ public class GoogleWorkspaceEndpointIntegrationTest extends TestKitSupport {
         assertThat(names).contains(
                 "Workspace_GoogleDrive_search_files",
                 "Workspace_GoogleDocs_read_doc",
+                "Workspace_GoogleSheets_get_values",
                 "Workspace_Gmail_search_threads",
                 "Workspace_GoogleCalendar_list_events");
     }

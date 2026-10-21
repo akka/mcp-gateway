@@ -69,13 +69,14 @@ Optional support-contact settings surface in the "request an integration" help t
 - `AKKA_SALESFORCE_MCP_URL` *(optional — our own MCP server complementing Salesforce with additional tools, e.g. downloading Opportunity attachments; reuses the Salesforce connection above)*
 - `AKKA_SALESFORCE_OKTA_APP_ID` *(optional — defaults to `SALESFORCE_OKTA_APP_ID`)*
 
-**Google Workspace** — Drive, Docs, Gmail, and Calendar behind one OAuth grant.
+**Google Workspace** — Drive, Docs, Sheets, Gmail, and Calendar behind one OAuth grant.
 
-One OAuth client covers all four Google products, so files created via Drive are reachable
+One OAuth client covers all five Google products, so files created via Drive are reachable
 from Docs and vice-versa (the `drive.file` allowlist is keyed to the OAuth client-id — see
 [Google's Workspace MCP guide](https://developers.google.com/workspace/guides/configure-mcp-servers)).
-Configure a single OAuth application in Google Cloud with the union of Drive/Docs/Gmail/Calendar
-scopes and point every user at the "Google Workspace" card on the dashboard.
+Configure a single OAuth application in Google Cloud with the union of Drive/Docs/Sheets/Gmail/Calendar
+scopes, enable each product's MCP server in the Cloud project as that guide describes, and point every
+user at the "Google Workspace" card on the dashboard.
 
 - `GOOGLE_WORKSPACE_CLIENT_ID`
 - `GOOGLE_WORKSPACE_CLIENT_SECRET`
@@ -83,12 +84,17 @@ scopes and point every user at the "Google Workspace" card on the dashboard.
 - `GOOGLE_WORKSPACE_OKTA_APP_ID` *(optional — defaults to `GOOGLE_DRIVE_OKTA_APP_ID`)*
 - `GOOGLE_WORKSPACE_DRIVE_MCP_URL` *(optional — defaults to `https://drivemcp.googleapis.com/mcp/v1`)*
 - `GOOGLE_WORKSPACE_DOCS_MCP_URL` *(optional — defaults to `https://docsmcp.googleapis.com/mcp/v1`)*
+- `GOOGLE_WORKSPACE_SHEETS_MCP_URL` *(optional — defaults to `https://sheetsmcp.googleapis.com/mcp/v1`)*
 - `GOOGLE_WORKSPACE_GMAIL_MCP_URL` *(optional — defaults to `https://gmailmcp.googleapis.com/mcp/v1`)*
 - `GOOGLE_WORKSPACE_CALENDAR_MCP_URL` *(optional — defaults to `https://calendarmcp.googleapis.com/mcp/v1`)*
 
 The deprecated Drive, Gmail, and Calendar connectors refuse new connections (`/connect` returns 409);
 existing connections keep working until disconnected. Google Workspace likewise refuses to connect
 while any of them is still connected, so each user ends up with a single Google connection.
+
+Sheets needs the `spreadsheets` scope, which Google Workspace connections made before Sheets support
+were not granted. Sheets tools are listed for those users, but a call returns a message asking them
+to disconnect and connect Google Workspace again; their other Google tools keep working meanwhile.
 
 **Google Drive** *(deprecated — use Google Workspace)* — retained so existing operators keep
 working; new deployments should not set these.
@@ -179,7 +185,7 @@ Every system is tied to an Okta application. Being assigned that application is 
 |---|---|
 | Zoho Desk | Zoho Desk |
 | Salesforce | Salesforce |
-| Google Workspace (Drive, Docs, Gmail, Calendar) | a single shared Google application |
+| Google Workspace (Drive, Docs, Sheets, Gmail, Calendar) | a single shared Google application |
 | Slack | Slack |
 | HubSpot | HubSpot |
 | Reo | Reo |
@@ -189,7 +195,7 @@ Every system is tied to an Okta application. Being assigned that application is 
 
 An application counts as assigned when it is active and assigned to you, whether or not its icon is shown on your Okta dashboard. That lets an application exist only to give the gateway access to a system.
 
-Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Gmail, and Calendar cannot currently be granted separately.
+Being assigned the Google application enables the whole Google Workspace card at once — Drive, Docs, Sheets, Gmail, and Calendar cannot currently be granted separately.
 
 ### Systems decide whether writes are possible
 

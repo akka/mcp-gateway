@@ -20,6 +20,8 @@ public final class McpClients {
                         config.getString("google-workspace.okta-app-id")),
                 new WorkspaceDocsMcpClient(componentClient, config.getString("google-workspace.docs.mcp-url"),
                         config.getString("google-workspace.okta-app-id")),
+                new WorkspaceSheetsMcpClient(componentClient, config.getString("google-workspace.sheets.mcp-url"),
+                        config.getString("google-workspace.okta-app-id")),
                 new WorkspaceGmailMcpClient(componentClient, config.getString("google-workspace.gmail.mcp-url"),
                         config.getString("google-workspace.okta-app-id")),
                 new WorkspaceCalendarMcpClient(componentClient, config.getString("google-workspace.calendar.mcp-url"),

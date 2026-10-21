@@ -167,7 +167,7 @@
         <div class="card-body" id="gdrive-body">
             <div class="deprecation-notice">
                 <strong>Deprecated.</strong> Use the <em>Google Workspace</em> connector instead — one sign-in
-                covers Drive, Docs, Gmail, and Calendar, and files are reachable across products.
+                covers Drive, Docs, Sheets, Gmail, and Calendar, and files are reachable across products.
             </div>
             <div id="gdrive-status" class="status loading">Loading status…</div>
             <div id="gdrive-actions" class="actions"></div>
@@ -190,7 +190,7 @@
         </div>
         <div class="card-body" id="gws-body">
             <p style="font-size: 0.85rem; color: #555; margin-top: 0;">
-                A single sign-in for Drive, Docs, Gmail, and Calendar — files created in one product are reachable from the others.
+                A single sign-in for Drive, Docs, Sheets, Gmail, and Calendar. Files created in one product are reachable from the others.
             </p>
             <ul class="product-list" id="gws-products" style="display:none"></ul>
             <div id="gws-status" class="status loading">Loading status…</div>
@@ -236,7 +236,7 @@
         <div class="card-body" id="gmail-body">
             <div class="deprecation-notice">
                 <strong>Deprecated.</strong> Use the <em>Google Workspace</em> connector instead — one sign-in
-                covers Drive, Docs, Gmail, and Calendar, and files are reachable across products.
+                covers Drive, Docs, Sheets, Gmail, and Calendar, and files are reachable across products.
             </div>
             <div id="gmail-status" class="status loading">Loading status…</div>
             <div id="gmail-actions" class="actions"></div>
@@ -261,7 +261,7 @@
         <div class="card-body" id="gcal-body">
             <div class="deprecation-notice">
                 <strong>Deprecated.</strong> Use the <em>Google Workspace</em> connector instead — one sign-in
-                covers Drive, Docs, Gmail, and Calendar, and files are reachable across products.
+                covers Drive, Docs, Sheets, Gmail, and Calendar, and files are reachable across products.
             </div>
             <div id="gcal-status" class="status loading">Loading status…</div>
             <div id="gcal-actions" class="actions"></div>
@@ -655,6 +655,7 @@
                         var WORKSPACE_PRODUCTS = [
                             { mcpId: 'google-workspace-drive', label: 'Drive' },
                             { mcpId: 'google-workspace-docs', label: 'Docs' },
+                            { mcpId: 'google-workspace-sheets', label: 'Sheets' },
                             { mcpId: 'google-workspace-gmail', label: 'Gmail' },
                             { mcpId: 'google-workspace-calendar', label: 'Calendar' }
                         ];
