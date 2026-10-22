@@ -9,11 +9,9 @@ import io.akka.mcp.gateway.application.GmailConnectionEntity;
 import io.akka.mcp.gateway.application.GoogleCalendarConnectionEntity;
 import io.akka.mcp.gateway.application.GoogleDriveConnectionEntity;
 import io.akka.mcp.gateway.application.GoogleWorkspaceConnectionEntity;
+import io.akka.mcp.gateway.application.McpClients;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
-import io.akka.mcp.gateway.application.WorkspaceCalendarMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceDocsMcpClient;
-import io.akka.mcp.gateway.application.WorkspaceDriveMcpClient;
-import io.akka.mcp.gateway.application.WorkspaceGmailMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceSheetsMcpClient;
 import io.akka.mcp.gateway.domain.GoogleWorkspaceConnection;
 import java.time.Instant;
@@ -54,24 +52,14 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     private final String workspaceRedirectUri;
     private final String workspaceClientId;
     private final String workspaceClientSecret;
-    private final String oktaAppId;
-    private final String driveMcpUrl;
-    private final String docsMcpUrl;
-    private final String sheetsMcpUrl;
-    private final String gmailMcpUrl;
-    private final String calendarMcpUrl;
+    private final List<RemoteMcpClient> workspaceClients;
 
     public GoogleWorkspaceOAuthEndpoint(ComponentClient componentClient, Config config) {
         super(componentClient, config);
         this.workspaceRedirectUri = config.getString("google-workspace.redirect-uri");
         this.workspaceClientId = config.getString("google-workspace.client-id");
         this.workspaceClientSecret = config.getString("google-workspace.client-secret");
-        this.oktaAppId = config.getString("google-workspace.okta-app-id");
-        this.driveMcpUrl = config.getString("google-workspace.drive.mcp-url");
-        this.docsMcpUrl = config.getString("google-workspace.docs.mcp-url");
-        this.sheetsMcpUrl = config.getString("google-workspace.sheets.mcp-url");
-        this.gmailMcpUrl = config.getString("google-workspace.gmail.mcp-url");
-        this.calendarMcpUrl = config.getString("google-workspace.calendar.mcp-url");
+        this.workspaceClients = McpClients.workspaceClients(componentClient, config);
     }
 
     @Override
@@ -155,17 +143,15 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     // /test uses this — Docs is a representative sanity check for the shared connection.
     @Override
     protected RemoteMcpClient createMcpClient() {
-        return new WorkspaceDocsMcpClient(componentClient, docsMcpUrl, oktaAppId);
+        return workspaceClients.stream()
+                .filter(client -> client.getMcpId().equals(WorkspaceDocsMcpClient.MCP_ID))
+                .findFirst()
+                .orElseThrow();
     }
 
     // After connect, prime the tools/list cache for every downstream Workspace MCP.
     @Override
     protected List<RemoteMcpClient> mcpClientsToWarm() {
-        return List.of(
-                new WorkspaceDriveMcpClient(componentClient, driveMcpUrl, oktaAppId),
-                new WorkspaceDocsMcpClient(componentClient, docsMcpUrl, oktaAppId),
-                new WorkspaceSheetsMcpClient(componentClient, sheetsMcpUrl, oktaAppId),
-                new WorkspaceGmailMcpClient(componentClient, gmailMcpUrl, oktaAppId),
-                new WorkspaceCalendarMcpClient(componentClient, calendarMcpUrl, oktaAppId));
+        return workspaceClients;
     }
 }

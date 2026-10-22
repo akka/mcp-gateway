@@ -4,6 +4,7 @@ import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.HttpClientProvider;
 import com.typesafe.config.Config;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** The downstream MCP connectors the gateway fronts, excluding the built-in how-to client. */
@@ -13,19 +14,12 @@ public final class McpClients {
 
     public static List<RemoteMcpClient> serviceClients(
             ComponentClient componentClient, HttpClientProvider httpClientProvider, Config config) {
-        return List.<RemoteMcpClient>of(
-                new ZohoMcpClient(componentClient, config.getString("zoho.mcp-url"), config.getString("zoho.okta-app-id")),
-                new GoogleDriveMcpClient(componentClient, config.getString("google-drive.mcp-url"), config.getString("google-drive.okta-app-id")),
-                new WorkspaceDriveMcpClient(componentClient, config.getString("google-workspace.drive.mcp-url"),
-                        config.getString("google-workspace.okta-app-id")),
-                new WorkspaceDocsMcpClient(componentClient, config.getString("google-workspace.docs.mcp-url"),
-                        config.getString("google-workspace.okta-app-id")),
-                new WorkspaceSheetsMcpClient(componentClient, config.getString("google-workspace.sheets.mcp-url"),
-                        config.getString("google-workspace.okta-app-id")),
-                new WorkspaceGmailMcpClient(componentClient, config.getString("google-workspace.gmail.mcp-url"),
-                        config.getString("google-workspace.okta-app-id")),
-                new WorkspaceCalendarMcpClient(componentClient, config.getString("google-workspace.calendar.mcp-url"),
-                        config.getString("google-workspace.okta-app-id")),
+        var clients = new ArrayList<RemoteMcpClient>();
+        clients.add(new ZohoMcpClient(componentClient, config.getString("zoho.mcp-url"), config.getString("zoho.okta-app-id")));
+        clients.add(new GoogleDriveMcpClient(componentClient, config.getString("google-drive.mcp-url"),
+                config.getString("google-drive.okta-app-id")));
+        clients.addAll(workspaceClients(componentClient, config));
+        clients.addAll(List.of(
                 new SalesforceMcpClient(componentClient, config.getString("salesforce.mcp-url"), config.getString("salesforce.okta-app-id")),
                 new AkkaSalesforceMcpClient(componentClient, httpClientProvider, config.getString("akka-salesforce.mcp-url"),
                         config.getString("akka-salesforce.okta-app-id")),
@@ -37,7 +31,19 @@ public final class McpClients {
                 new HubspotMcpClient(componentClient, config.getString("hubspot.mcp-url"), config.getString("hubspot.okta-app-id")),
                 new OktaMcpClient(config.getString("okta-admin.mcp-url"), httpClientProvider, config.getString("okta-admin.okta-app-id")),
                 new SeamlessMcpClient(config.getString("seamless.mcp-url"), config.getString("seamless.api-key"), config.getString("seamless.okta-app-id"))
-        );
+        ));
+        return List.copyOf(clients);
+    }
+
+    /** The Google Workspace products, which all authenticate with the one Google Workspace connection. */
+    public static List<RemoteMcpClient> workspaceClients(ComponentClient componentClient, Config config) {
+        String oktaAppId = config.getString("google-workspace.okta-app-id");
+        return List.of(
+                new WorkspaceDriveMcpClient(componentClient, config.getString("google-workspace.drive.mcp-url"), oktaAppId),
+                new WorkspaceDocsMcpClient(componentClient, config.getString("google-workspace.docs.mcp-url"), oktaAppId),
+                new WorkspaceSheetsMcpClient(componentClient, config.getString("google-workspace.sheets.mcp-url"), oktaAppId),
+                new WorkspaceGmailMcpClient(componentClient, config.getString("google-workspace.gmail.mcp-url"), oktaAppId),
+                new WorkspaceCalendarMcpClient(componentClient, config.getString("google-workspace.calendar.mcp-url"), oktaAppId));
     }
 }
 

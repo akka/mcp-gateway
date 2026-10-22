@@ -610,20 +610,17 @@
                         var sectionB = document.getElementById('section-inaccessible');
                         var inaccessibleCards = document.getElementById('inaccessible-cards');
 
-                        // Collapse the four google-workspace-* MCP ids to the single "google-workspace"
+                        // Collapse the google-workspace-* MCP ids to the single "google-workspace"
                         // card — they share one OAuth connection, so the dashboard shows one entry.
                         function normalizeMcpId(mcpId) {
                             return mcpId.indexOf('google-workspace-') === 0 ? 'google-workspace' : mcpId;
                         }
 
-                        // Whether the signed-in user may run write tools on each MCP (connector is
-                        // write-enabled and the user is a writer), keyed both by card and by raw mcpId
-                        // (the Workspace card needs the raw ids to annotate its four products).
+                        // Whether the signed-in user may run write tools on each card's MCP (connector
+                        // is write-enabled and the user is a writer).
                         var writeAllowedByCard = {};
-                        var writeAllowedByMcp = {};
                         access.accessible.concat(access.inaccessible).forEach(function(mcp) {
                             writeAllowedByCard[normalizeMcpId(mcp.mcpId)] = mcp.writeAllowed;
-                            writeAllowedByMcp[mcp.mcpId] = mcp.writeAllowed;
                         });
 
                         var WORKSPACE_CARD_ID = 'google-workspace';
@@ -641,7 +638,7 @@
                         }
 
                         function addAccessBadges(card, mcpId) {
-                            // The Workspace card fronts four MCPs with differing capabilities; its
+                            // The Workspace card fronts several MCPs with differing capabilities; its
                             // product list carries the classification, so no card-level badge.
                             if (mcpId === WORKSPACE_CARD_ID) return;
                             var right = card.querySelector('.card-header-right');
@@ -652,26 +649,30 @@
                             });
                         }
 
-                        var WORKSPACE_PRODUCTS = [
-                            { mcpId: 'google-workspace-drive', label: 'Drive' },
-                            { mcpId: 'google-workspace-docs', label: 'Docs' },
-                            { mcpId: 'google-workspace-sheets', label: 'Sheets' },
-                            { mcpId: 'google-workspace-gmail', label: 'Gmail' },
-                            { mcpId: 'google-workspace-calendar', label: 'Calendar' }
-                        ];
+                        // The products come from /access in the gateway's order; each name is
+                        // "Google Workspace — <product>".
+                        var WORKSPACE_NAME_PREFIX = 'Google Workspace — ';
+                        var workspaceProducts = access.accessible.concat(access.inaccessible).filter(function(mcp) {
+                            return normalizeMcpId(mcp.mcpId) === WORKSPACE_CARD_ID;
+                        });
+
+                        function workspaceProductLabel(mcpName) {
+                            return mcpName.indexOf(WORKSPACE_NAME_PREFIX) === 0
+                                    ? mcpName.substring(WORKSPACE_NAME_PREFIX.length)
+                                    : mcpName;
+                        }
 
                         function renderWorkspaceProducts() {
                             var list = document.getElementById('gws-products');
                             if (!list) return;
                             list.innerHTML = '';
-                            WORKSPACE_PRODUCTS.forEach(function(product) {
-                                if (!(product.mcpId in writeAllowedByMcp)) return;
+                            workspaceProducts.forEach(function(product) {
                                 var row = document.createElement('li');
                                 var name = document.createElement('span');
-                                name.textContent = product.label;
+                                name.textContent = workspaceProductLabel(product.mcpName);
                                 var badges = document.createElement('span');
                                 badges.className = 'product-badges';
-                                accessLabels(writeAllowedByMcp[product.mcpId]).forEach(function(label) {
+                                accessLabels(product.writeAllowed).forEach(function(label) {
                                     badges.appendChild(accessBadge(label));
                                 });
                                 row.appendChild(name);
