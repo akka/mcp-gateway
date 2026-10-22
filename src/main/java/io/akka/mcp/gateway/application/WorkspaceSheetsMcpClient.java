@@ -1,6 +1,7 @@
 package io.akka.mcp.gateway.application;
 
 import akka.javasdk.client.ComponentClient;
+import io.akka.mcp.gateway.domain.GoogleWorkspaceConnection;
 import io.akka.mcp.gateway.domain.McpConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -24,6 +25,7 @@ public class WorkspaceSheetsMcpClient implements RemoteMcpClient {
 
     public static final String MCP_ID = "google-workspace-sheets";
     public static final String MCP_NAME = "Google Workspace — Sheets";
+    public static final String REQUIRED_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
     private static final Logger log = LoggerFactory.getLogger(WorkspaceSheetsMcpClient.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -79,6 +81,7 @@ public class WorkspaceSheetsMcpClient implements RemoteMcpClient {
     public boolean isConnected(String userId) {
         if (mcpUrl.isEmpty()) return false;
         try {
+            if (lacksSheetsScope(userId)) return false;
             fetchToken(userId);
             return true;
         } catch (Exception e) {
@@ -161,6 +164,14 @@ public class WorkspaceSheetsMcpClient implements RemoteMcpClient {
             if (value != null) annotations.put(key, value);
         }
         return annotations;
+    }
+
+    private boolean lacksSheetsScope(String userId) {
+        var connection = componentClient
+                .forKeyValueEntity(userId)
+                .method(GoogleWorkspaceConnectionEntity::getStatus)
+                .invoke();
+        return connection.scopeGrant(REQUIRED_SCOPE) == GoogleWorkspaceConnection.ScopeGrant.MISSING;
     }
 
     private String fetchToken(String userId) {

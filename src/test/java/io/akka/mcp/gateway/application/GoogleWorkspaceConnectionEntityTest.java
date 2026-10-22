@@ -3,6 +3,7 @@ package io.akka.mcp.gateway.application;
 import akka.javasdk.testkit.KeyValueEntityTestKit;
 import com.sun.net.httpserver.HttpServer;
 import com.typesafe.config.ConfigFactory;
+import io.akka.mcp.gateway.domain.GoogleWorkspaceConnection.ScopeGrant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -10,11 +11,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class GoogleWorkspaceConnectionEntityTest {
+
+    private static final String SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
     private HttpServer tokenServer;
     private final AtomicReference<String> lastRefreshRequest = new AtomicReference<>();
@@ -252,5 +256,54 @@ public class GoogleWorkspaceConnectionEntityTest {
 
         assertThat(result.isError()).isTrue();
         assertThat(result.getError()).contains("Please reconnect");
+    }
+
+    @Test
+    public void recordGrantedScopes_whenConnected_storesScopes() {
+        var testKit = newTestKit();
+        connectWithExpiredToken(testKit, "https://token.example.com", "refresh");
+
+        var result = testKit.method(GoogleWorkspaceConnectionEntity::recordGrantedScopes)
+                .invoke(new GoogleWorkspaceConnectionEntity.RecordGrantedScopesCommand(Set.of("openid", SHEETS_SCOPE)));
+
+        assertThat(result.isReply()).isTrue();
+        assertThat(testKit.getState().scopeGrant(SHEETS_SCOPE)).isEqualTo(ScopeGrant.GRANTED);
+    }
+
+    @Test
+    public void recordGrantedScopes_whenNotConnected_returnsErrorAndStoresNothing() {
+        var testKit = newTestKit();
+
+        var result = testKit.method(GoogleWorkspaceConnectionEntity::recordGrantedScopes)
+                .invoke(new GoogleWorkspaceConnectionEntity.RecordGrantedScopesCommand(Set.of(SHEETS_SCOPE)));
+
+        assertThat(result.isError()).isTrue();
+        assertThat(testKit.getState().scopeGrant(SHEETS_SCOPE)).isEqualTo(ScopeGrant.UNKNOWN);
+    }
+
+    @Test
+    public void getAccessToken_whenRefreshReportsScopes_recordsThem() throws Exception {
+        var endpoint = startTokenServer(200, "{\"access_token\":\"new-access\",\"scope\":\"openid email\"}");
+        var testKit = newTestKit();
+        connectWithExpiredToken(testKit, endpoint, "old-refresh");
+
+        testKit.method(GoogleWorkspaceConnectionEntity::getAccessToken).invoke();
+
+        assertThat(testKit.getState().grantedScopes()).containsExactlyInAnyOrder("openid", "email");
+        assertThat(testKit.getState().scopeGrant(SHEETS_SCOPE)).isEqualTo(ScopeGrant.MISSING);
+    }
+
+    @Test
+    public void getAccessToken_whenRefreshOmitsScope_keepsRecordedScopes() throws Exception {
+        var endpoint = startTokenServer(200, "{\"access_token\":\"new-access\"}");
+        var testKit = newTestKit();
+        connectWithExpiredToken(testKit, endpoint, "old-refresh");
+        testKit.method(GoogleWorkspaceConnectionEntity::recordGrantedScopes)
+                .invoke(new GoogleWorkspaceConnectionEntity.RecordGrantedScopesCommand(Set.of(SHEETS_SCOPE)));
+
+        testKit.method(GoogleWorkspaceConnectionEntity::getAccessToken).invoke();
+
+        assertThat(testKit.getState().accessToken()).isEqualTo("new-access");
+        assertThat(testKit.getState().scopeGrant(SHEETS_SCOPE)).isEqualTo(ScopeGrant.GRANTED);
     }
 }

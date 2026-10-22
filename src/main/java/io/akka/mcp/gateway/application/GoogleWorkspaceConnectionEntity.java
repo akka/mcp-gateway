@@ -14,6 +14,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Set;
 
 @Component(id = "google-workspace-connection")
 public class GoogleWorkspaceConnectionEntity extends KeyValueEntity<GoogleWorkspaceConnection> {
@@ -49,7 +50,7 @@ public class GoogleWorkspaceConnectionEntity extends KeyValueEntity<GoogleWorksp
         }
         try {
             var fresh = performRefresh(state);
-            var newState = state.withToken(fresh.accessToken(), fresh.refreshToken(), fresh.expiresAt());
+            var newState = state.withToken(fresh.accessToken(), fresh.refreshToken(), fresh.expiresAt(), fresh.grantedScopes());
             return effects().updateState(newState).thenReply(newState.accessToken());
         } catch (Exception e) {
             return effects().error("Failed to refresh Google Workspace token: " + e.getMessage());
@@ -71,11 +72,18 @@ public class GoogleWorkspaceConnectionEntity extends KeyValueEntity<GoogleWorksp
         return effects().updateState(newState).thenReply(Done.getInstance());
     }
 
+    public Effect<Done> recordGrantedScopes(RecordGrantedScopesCommand cmd) {
+        if (!currentState().isConnected()) {
+            return effects().error("Google Workspace is not connected");
+        }
+        return effects().updateState(currentState().withGrantedScopes(cmd.scopes())).thenReply(Done.getInstance());
+    }
+
     public Effect<Done> disconnect() {
         return effects().updateState(currentState().disconnected()).thenReply(Done.getInstance());
     }
 
-    private record FreshToken(String accessToken, String refreshToken, Instant expiresAt) {}
+    private record FreshToken(String accessToken, String refreshToken, Instant expiresAt, Set<String> grantedScopes) {}
 
     private FreshToken performRefresh(GoogleWorkspaceConnection connection) throws Exception {
         String formBody = "grant_type=refresh_token"
@@ -103,10 +111,16 @@ public class GoogleWorkspaceConnectionEntity extends KeyValueEntity<GoogleWorksp
         String newRefreshToken = json.path("refresh_token").asText(connection.refreshToken());
         long expiresIn = json.path("expires_in").asLong(3600);
 
-        return new FreshToken(newAccessToken, newRefreshToken, Instant.now().plusSeconds(expiresIn));
+        var grantedScopes = json.hasNonNull("scope")
+                ? GoogleWorkspaceConnection.scopesFrom(json.get("scope").asText())
+                : connection.grantedScopes();
+
+        return new FreshToken(newAccessToken, newRefreshToken, Instant.now().plusSeconds(expiresIn), grantedScopes);
     }
 
     public record InitiateCommand(String state, String codeVerifier, String clientId, String tokenEndpoint) {}
 
     public record StoreTokenCommand(String accessToken, String refreshToken, Instant expiresAt, String state) {}
+
+    public record RecordGrantedScopesCommand(Set<String> scopes) {}
 }

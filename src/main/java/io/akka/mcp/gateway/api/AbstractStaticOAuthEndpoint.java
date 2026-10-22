@@ -62,6 +62,9 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
      *  Enforced server-side so a dashboard-only lockout can't be bypassed by hitting the URL directly. */
     protected Optional<String> connectBlockedReason(String email) { return Optional.empty(); }
 
+    /** Called after the exchanged token is stored, for connectors that keep more of the token response. */
+    protected void onTokenStored(String email, com.fasterxml.jackson.databind.JsonNode tokenJson) { }
+
     protected String extractAccessToken(com.fasterxml.jackson.databind.JsonNode tokenJson) {
         return tokenJson.path("access_token").asText();
     }
@@ -132,6 +135,7 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
             Instant expiresAt = Instant.now().plusSeconds(expiresIn);
 
             storeToken(session.email(), accessToken, refreshToken, expiresAt, state);
+            onTokenStored(session.email(), tokenJson);
             recordConnectionEvent(session.email(), "connect-success", null);
             for (var mcpClient : mcpClientsToWarm()) {
                 warmRegistryCache(mcpClient, session.email());

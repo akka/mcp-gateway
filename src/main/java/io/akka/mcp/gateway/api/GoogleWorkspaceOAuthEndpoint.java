@@ -3,6 +3,7 @@ package io.akka.mcp.gateway.api;
 import akka.javasdk.annotations.Acl;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import io.akka.mcp.gateway.application.GmailConnectionEntity;
 import io.akka.mcp.gateway.application.GoogleCalendarConnectionEntity;
@@ -14,6 +15,7 @@ import io.akka.mcp.gateway.application.WorkspaceDocsMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceDriveMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceGmailMcpClient;
 import io.akka.mcp.gateway.application.WorkspaceSheetsMcpClient;
+import io.akka.mcp.gateway.domain.GoogleWorkspaceConnection;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +40,7 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
             "https://www.googleapis.com/auth/drive.readonly",
             "https://www.googleapis.com/auth/drive.file",
             "https://www.googleapis.com/auth/documents",
-            "https://www.googleapis.com/auth/spreadsheets",
+            WorkspaceSheetsMcpClient.REQUIRED_SCOPE,
             // Gmail: search/read and drafts. No gmail.modify, so applying/removing labels is deliberately
             // unsupported. Note gmail.compose also permits sending mail.
             "https://www.googleapis.com/auth/gmail.readonly",
@@ -106,6 +108,14 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     protected void storeToken(String email, String accessToken, String refreshToken, Instant expiresAt, String state) {
         componentClient.forKeyValueEntity(email).method(GoogleWorkspaceConnectionEntity::storeToken)
                 .invoke(new GoogleWorkspaceConnectionEntity.StoreTokenCommand(accessToken, refreshToken, expiresAt, state));
+    }
+
+    @Override
+    protected void onTokenStored(String email, JsonNode tokenJson) {
+        if (!tokenJson.hasNonNull("scope")) return;
+        componentClient.forKeyValueEntity(email).method(GoogleWorkspaceConnectionEntity::recordGrantedScopes)
+                .invoke(new GoogleWorkspaceConnectionEntity.RecordGrantedScopesCommand(
+                        GoogleWorkspaceConnection.scopesFrom(tokenJson.get("scope").asText())));
     }
 
     @Override
