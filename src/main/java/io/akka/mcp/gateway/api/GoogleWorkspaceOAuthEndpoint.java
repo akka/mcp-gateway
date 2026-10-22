@@ -28,17 +28,18 @@ public class GoogleWorkspaceOAuthEndpoint extends AbstractStaticOAuthEndpoint {
     private static final String GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
     private static final String GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
-    // Union of scopes for Drive, Docs, Sheets, Gmail, Calendar — grant them together under one client-id so a file
+    // Union of scopes for Drive, Docs, Sheets, Gmail, Calendar, granted together under one client-id so a file
     // touched by one product's MCP is reachable from the others (drive.file is per-client-id, not per-server).
-    // Narrowest set covering the hosted servers' tools, per
-    // https://developers.google.com/workspace/guides/configure-mcp-servers — no full `drive`, no
-    // `https://mail.google.com/` (permanent delete), no full `calendar` (calendar settings/ACLs).
+    // Taken from the per-server lists in https://developers.google.com/workspace/guides/configure-mcp-servers,
+    // leaving out full `drive`, `https://mail.google.com/` (permanent delete) and full `calendar`
+    // (calendar settings/ACLs).
     private static final String GOOGLE_WORKSPACE_SCOPE = String.join(" ",
             "openid",
             "email",
-            // Drive + Docs + Sheets: read anything, write only files the app created or the user opened with it
+            // Drive: read any file, write only files the app created or the user opened with it
             "https://www.googleapis.com/auth/drive.readonly",
             "https://www.googleapis.com/auth/drive.file",
+            // Docs and Sheets: read and write every document and spreadsheet the user can edit
             "https://www.googleapis.com/auth/documents",
             WorkspaceSheetsMcpClient.REQUIRED_SCOPE,
             // Gmail: search/read and drafts. No gmail.modify, so applying/removing labels is deliberately

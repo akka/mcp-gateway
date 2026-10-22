@@ -92,9 +92,17 @@ The deprecated Drive, Gmail, and Calendar connectors refuse new connections (`/c
 existing connections keep working until disconnected. Google Workspace likewise refuses to connect
 while any of them is still connected, so each user ends up with a single Google connection.
 
+Docs and Sheets use the `documents` and `spreadsheets` scopes, which reach every document and spreadsheet
+the user can edit, not only files the gateway created. With writes enabled for Google Workspace (see
+[Systems decide whether writes are possible](#systems-decide-whether-writes-are-possible)), a user in the
+writer group lets their assistant change any of them. Drive is narrower: it reads any file but writes only
+files the gateway created or the user opened with it.
+
 Sheets needs the `spreadsheets` scope, which Google Workspace connections made before Sheets support
 were not granted. Sheets tools are listed for those users, but Google refuses their calls until they
-disconnect and connect Google Workspace again; their other Google tools keep working meanwhile.
+disconnect and connect Google Workspace again; their other Google tools keep working meanwhile. Once the
+gateway has recorded the scopes of such a connection, at its next token refresh, Sheets is reported as not
+connected for that user.
 
 **Google Drive** *(deprecated — use Google Workspace)* — retained so existing operators keep
 working; new deployments should not set these.
