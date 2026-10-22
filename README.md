@@ -93,8 +93,8 @@ existing connections keep working until disconnected. Google Workspace likewise 
 while any of them is still connected, so each user ends up with a single Google connection.
 
 Sheets needs the `spreadsheets` scope, which Google Workspace connections made before Sheets support
-were not granted. Sheets tools are listed for those users, but a call returns a message asking them
-to disconnect and connect Google Workspace again; their other Google tools keep working meanwhile.
+were not granted. Sheets tools are listed for those users, but Google refuses their calls until they
+disconnect and connect Google Workspace again; their other Google tools keep working meanwhile.
 
 **Google Drive** *(deprecated — use Google Workspace)* — retained so existing operators keep
 working; new deployments should not set these.

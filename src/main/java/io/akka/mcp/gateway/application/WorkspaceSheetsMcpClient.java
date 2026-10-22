@@ -17,7 +17,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -133,39 +132,8 @@ public class WorkspaceSheetsMcpClient implements RemoteMcpClient {
                     .build();
             var result = client.executeTool(request);
             log.info("tools/call result isError={}", result.isError());
-            if (result.isError() && reportsMissingScope(result.resultText())) {
-                return new ToolCallResult(MISSING_SCOPE_MESSAGE, true);
-            }
             return new ToolCallResult(result.resultText(), result.isError());
-        } catch (Exception e) {
-            if (!isScopeRefusal(e)) throw e;
-            log.info("Google refused Sheets access for user {}: {}", userId, e.getMessage());
-            return new ToolCallResult(MISSING_SCOPE_MESSAGE, true);
         }
-    }
-
-    static final String MISSING_SCOPE_MESSAGE =
-            "Google refused access to Sheets. Your Google Workspace connection probably predates Sheets "
-            + "support and lacks the Sheets permission: disconnect and connect Google Workspace again "
-            + "on the gateway dashboard, then retry.";
-
-    /** langchain4j surfaces a non-2xx MCP response, such as Google's 403 for a missing scope, only by its message. */
-    static boolean isScopeRefusal(Throwable error) {
-        for (Throwable t = error; t != null; t = t.getCause()) {
-            String message = t.getMessage();
-            if (message != null && (message.contains("Unexpected status code: 403") || reportsMissingScope(message))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    static boolean reportsMissingScope(String text) {
-        if (text == null) return false;
-        String lower = text.toLowerCase(Locale.ROOT);
-        return lower.contains("access_token_scope_insufficient")
-                || lower.contains("insufficient authentication scopes")
-                || lower.contains("insufficient_scope");
     }
 
     private static Boolean extractReadOnlyHint(Map<String, Object> metadata) {
