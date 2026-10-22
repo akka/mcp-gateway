@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * MCP JSON-RPC endpoint backed by the Slack Web API.
@@ -26,8 +27,8 @@ import java.util.Map;
  *   Authorization: Bearer xoxp-...
  *
  *
- * Every tool is read-only (readOnlyHint: true) except slack_post_message and slack_draft_message, which are advertised with
- * readOnlyHint: false so the gateway applies its write gate to it. The token is the user's own
+ * Every tool is read-only (readOnlyHint: true) except slack_post_message, slack_update_message and slack_draft_message,
+ * which are advertised with readOnlyHint: false so the gateway applies its write gate to them. The token is the user's own
  * OAuth token so they can only access channels and data they normally can see.
  */
 @HttpEndpoint("/mcp")
@@ -36,6 +37,9 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
 
     private static final Logger log = LoggerFactory.getLogger(SlackMcpEndpoint.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final String MRKDWN_TEXT = "Slack mrkdwn: *text* is bold, so put code and literal asterisks "
+            + "in backticks.";
 
     private final String slackApiBaseUrl;
     private final String hostedMcpUrl;
@@ -150,14 +154,33 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                         param("channel", "string",
                                 "Channel/DM/group id (e.g. C12345, D12345, G12345). Use slack_list_channels or "
                                         + "slack_search_messages to find it; @name and #name are not accepted."),
-                        param("text", "string", "Message body (Slack mrkdwn supported)."),
+                        param("text", "string", "Message body in " + MRKDWN_TEXT),
                         param("thread_ts", "string",
                                 "Optional parent message timestamp (e.g. 1234567890.123456). Omit to post as a new "
                                         + "top-level message."),
                         param("omit_assistant_marker", "boolean",
                                 "Leave unset. Set to true only when the user has explicitly asked for this message "
                                         + "not to be marked as posted by an assistant.")),
-                List.of("channel", "text")));
+                List.of("channel", "text"), false));
+
+        tools.add(writeTool("slack_update_message",
+                "Replace the text of a Slack message the user posted, for example to fix formatting or a mistake. "
+                        + "Slack only allows editing the user's own messages. The new text replaces the whole "
+                        + "message and is prefixed with 🤖 again; set omit_assistant_marker only if the user has "
+                        + "explicitly told you not to mark this message. Messages in channels shared outside Akka "
+                        + "(Slack Connect or external- channels) are never edited: you get the text back for the "
+                        + "user to edit the message themselves.",
+                props(
+                        param("channel", "string",
+                                "Channel/DM/group id the message is in (e.g. C12345, D12345, G12345)."),
+                        param("ts", "string",
+                                "Timestamp of the message to edit (e.g. 1234567890.123456), as returned by "
+                                        + "slack_post_message or the read tools."),
+                        param("text", "string", "The complete new message body in " + MRKDWN_TEXT),
+                        param("omit_assistant_marker", "boolean",
+                                "Leave unset. Set to true only when the user has explicitly asked for this message "
+                                        + "not to be marked as posted by an assistant.")),
+                List.of("channel", "ts", "text"), true));
 
         tools.add(writeTool("slack_draft_message",
                 "Save a draft message in the user's Slack (Drafts & Sent) for them to review, edit and send "
@@ -172,7 +195,7 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                         param("text", "string", "Draft body (markdown supported)."),
                         param("thread_ts", "string",
                                 "Optional parent message timestamp (e.g. 1234567890.123456) to draft a thread reply. Omit for a new top-level message.")),
-                List.of("channel", "text")));
+                List.of("channel", "text"), false));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tools", tools);
@@ -232,9 +255,16 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
                     String messageText = required(args, "text");
                     String threadTs = str(args, "thread_ts");
                     boolean markAsAssistant = !boolArg(args, "omit_assistant_marker");
-                    var target = channelOrNotPosted(slack, channel);
-                    if (target.external()) throw new NotPostedException(externalChannelNotPosted(target, messageText, threadTs));
+                    requireInternalChannel(slack, channel, postRefusals(messageText, threadTs));
                     yield MAPPER.writeValueAsString(slack.postMessage(channel, messageText, threadTs, markAsAssistant));
+                }
+                case "slack_update_message" -> {
+                    String channel = required(args, "channel");
+                    String ts = required(args, "ts");
+                    String messageText = required(args, "text");
+                    boolean markAsAssistant = !boolArg(args, "omit_assistant_marker");
+                    requireInternalChannel(slack, channel, editRefusals(messageText));
+                    yield MAPPER.writeValueAsString(slack.updateMessage(channel, ts, messageText, markAsAssistant));
                 }
                 case "slack_draft_message" -> {
                     String channel = required(args, "channel");
@@ -250,8 +280,8 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
             result.put("isError", false);
             return responseJson(id, result);
 
-        } catch (NotPostedException e) {
-            log.info("tools/call {} not posted", toolName);
+        } catch (WriteRefusedException e) {
+            log.info("tools/call {} refused", toolName);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("content", List.of(Map.of("type", "text", "text", e.getMessage())));
             result.put("isError", true);
@@ -266,30 +296,55 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
         }
     }
 
-    /** A post that was deliberately not made. The message may carry the user's text, so it is never logged. */
-    private static final class NotPostedException extends RuntimeException {
-        NotPostedException(String message) { super(message); }
+    /** A write that was deliberately not made. The message may carry the user's text, so it is never logged. */
+    private static final class WriteRefusedException extends RuntimeException {
+        WriteRefusedException(String message) { super(message); }
     }
 
-    /** If the channel cannot be checked it is not posted to: an unknown channel might be external. */
-    private static SlackApiClient.Channel channelOrNotPosted(SlackApiClient slack, String channel) throws Exception {
+    /**
+     * What to tell the model when a write is refused: {@code uncheckable} gets the Slack error from the
+     * channel lookup, {@code external} gets where the write was going.
+     */
+    private record ChannelRefusals(Function<String, String> uncheckable, Function<String, String> external) {}
+
+    /** A channel that cannot be checked might be external, so it is refused too. */
+    private static void requireInternalChannel(SlackApiClient slack, String channel, ChannelRefusals refusals)
+            throws Exception {
+        SlackApiClient.Channel target;
         try {
-            return slack.channelInfo(channel);
+            target = slack.channelInfo(channel);
         } catch (SlackApiClient.SlackApiException e) {
-            throw new NotPostedException("Not posted: could not check whether this conversation is shared outside Akka ("
-                    + e.slackError() + "). Nothing was sent. To let the user review the message, save it with "
-                    + "slack_draft_message instead.");
+            throw new WriteRefusedException(refusals.uncheckable().apply(e.slackError()));
         }
+        if (target.external()) throw new WriteRefusedException(refusals.external().apply(where(target)));
     }
 
-    private static String externalChannelNotPosted(SlackApiClient.Channel target, String text, String threadTs) {
-        var where = target.name().isBlank() ? "This conversation" : "#" + target.name();
+    private static String where(SlackApiClient.Channel target) {
+        return target.name().isBlank() ? "This conversation" : "#" + target.name();
+    }
+
+    private static ChannelRefusals postRefusals(String text, String threadTs) {
         var thread = threadTs == null || threadTs.isBlank() ? "" : " and thread_ts=" + threadTs;
-        return "Not posted: " + where + " is shared outside Akka, and an assistant never posts there. A person reviews "
-                + "and sends messages to external channels, without the assistant marker. Save it as a draft for the "
-                + "user by calling slack_draft_message with the same channel" + thread + " and this text, then tell "
-                + "the user to review and send it from Drafts & Sent. If the draft cannot be saved, give the user "
-                + "this message to review and send themselves:\n\n" + text;
+        return new ChannelRefusals(
+                error -> "Not posted: could not check whether this conversation is shared outside Akka (" + error
+                        + "). Nothing was sent. To let the user review the message, save it with "
+                        + "slack_draft_message instead.",
+                where -> "Not posted: " + where + " is shared outside Akka, and an assistant never posts there. A "
+                        + "person reviews and sends messages to external channels, without the assistant marker. "
+                        + "Save it as a draft for the user by calling slack_draft_message with the same channel"
+                        + thread + " and this text, then tell the user to review and send it from Drafts & Sent. "
+                        + "If the draft cannot be saved, give the user this message to review and send "
+                        + "themselves:\n\n" + text);
+    }
+
+    private static ChannelRefusals editRefusals(String text) {
+        var handBack = "Nothing was changed. Give the user this text to review and edit the message "
+                + "themselves:\n\n" + text;
+        return new ChannelRefusals(
+                error -> "Not edited: could not check whether this conversation is shared outside Akka (" + error
+                        + "). " + handBack,
+                where -> "Not edited: " + where + " is shared outside Akka, and an assistant never changes "
+                        + "messages there. " + handBack);
     }
 
     // -- tool schema helpers --
@@ -302,9 +357,9 @@ public class SlackMcpEndpoint extends AbstractHttpEndpoint {
     /** A tool that mutates state in Slack. The {@code readOnlyHint:false} is what the gateway's
      * write classifier reads to send the call through the write-permission gate. */
     private static Map<String, Object> writeTool(String name, String description,
-            Map<String, Object> properties, List<String> required) {
+            Map<String, Object> properties, List<String> required, boolean idempotent) {
         return toolInternal(name, description, properties, required,
-                Map.of("readOnlyHint", false, "destructiveHint", false, "idempotentHint", false));
+                Map.of("readOnlyHint", false, "destructiveHint", false, "idempotentHint", idempotent));
     }
 
     private static Map<String, Object> toolInternal(String name, String description,

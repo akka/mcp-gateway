@@ -127,6 +127,8 @@ working; new deployments should not set these.
 - `GOOGLE_CALENDAR_OKTA_APP_ID` *(optional — defaults to `GOOGLE_DRIVE_OKTA_APP_ID`)*
 
 **Slack** — channels and messages. Posts start with 🤖 so readers can tell an assistant wrote them, unless the user explicitly asks the assistant to leave it off. Channels shared outside the organisation (Slack Connect, or named `external-...`) are never posted to, with or without the marker: the assistant saves the text as a draft in the user's Slack for a person to review and send, and when the gateway cannot tell whether a channel is shared, nothing is posted.
+
+The assistant can also edit a message the user posted (`slack_update_message`), for example to fix formatting. Slack only allows editing the user's own messages. The new text replaces the whole message and starts with 🤖 again under the same rule as a post. Messages in channels shared outside the organisation are never edited; the assistant gives the user the new text to edit the message themselves. Editing uses the same write gate and `chat:write` scope as posting, so anyone who can post can also edit without reconnecting.
 - `SLACK_MCP_URL`
 - `SLACK_CLIENT_ID`
 - `SLACK_CLIENT_SECRET`
