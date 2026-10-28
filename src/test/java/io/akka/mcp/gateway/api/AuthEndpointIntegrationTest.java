@@ -30,9 +30,29 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     // ── unauthenticated tests ────────────────────────────────────────────────
 
     @Test
-    public void loginPage_isPublic() {
-        var response = httpClient.GET("/login").responseBodyAs(String.class).invoke();
+    public void login_afterSignOut_showsSignedOutPageWithoutScript() {
+        var response = httpClient.GET("/login?flash=logout").responseBodyAs(String.class).invoke();
+
         assertThat(response.status().isSuccess()).isTrue();
+        assertThat(response.body()).contains("You have been signed out.").contains("href=\"/auth/start\"")
+                .doesNotContain("<script");
+    }
+
+    @Test
+    public void login_withoutSession_redirectsServerSideToOktaSignIn() {
+        var response = httpClient.GET("/login").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value())).hasValue("/auth/start");
+    }
+
+    @Test
+    public void login_withReturnTo_passesItOnToOktaSignIn() {
+        var response = httpClient.GET("/login?return_to=%2Finteractions%3Fx%3D1").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/auth/start?return_to=%2Finteractions%3Fx%3D1");
     }
 
     @Test
@@ -70,6 +90,18 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
         assertThat(AuthEndpoint.safeReturnTo("/x\r\nSet-Cookie: a=b")).isEqualTo("/");
         assertThat(AuthEndpoint.safeReturnTo("/login")).isEqualTo("/");
         assertThat(AuthEndpoint.safeReturnTo("/auth/logout")).isEqualTo("/");
+    }
+
+    @Test
+    public void safeReturnTo_rejectsPathsThatAreNotValidUris() {
+        assertThat(AuthEndpoint.safeReturnTo("/interactions with space")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/x?q=<script>")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/100%")).isEqualTo("/");
+    }
+
+    @Test
+    public void safeReturnTo_keepsPercentEncodedPaths() {
+        assertThat(AuthEndpoint.safeReturnTo("/interactions?q=a%20b")).isEqualTo("/interactions?q=a%20b");
     }
 
     @Test

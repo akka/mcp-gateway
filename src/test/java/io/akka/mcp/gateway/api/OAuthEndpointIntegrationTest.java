@@ -34,8 +34,8 @@ public class OAuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void loginPage_isPublic() {
-        var response = httpClient.GET("/login").responseBodyAs(String.class).invoke();
+    public void signedOutLoginPage_isPublic() {
+        var response = httpClient.GET("/login?flash=logout").responseBodyAs(String.class).invoke();
         assertThat(response.status().isSuccess()).isTrue();
     }
 }

@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -140,11 +141,21 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
         return HttpResponses.staticResource("index.html");
     }
 
+    /**
+     * Goes straight on to the Okta sign-in, except right after signing out: then it shows the
+     * signed-out page, or a live Okta session would sign the user straight back in.
+     */
     @Get("/login")
     public HttpResponse loginPage() {
         if (requireSession() != null) return redirectTo("/?flash=already-logged-in");
-        return HttpResponses.staticResource("login.html")
-                .addHeader(RawHeader.create("Cache-Control", "no-cache"));
+        var params = requestContext().queryParams();
+        if (params.getString("flash").filter("logout"::equals).isPresent()) {
+            return HttpResponses.staticResource("login.html")
+                    .addHeader(RawHeader.create("Cache-Control", "no-cache"));
+        }
+        return params.getString("return_to")
+                .map(returnTo -> redirectTo("/auth/start?return_to=" + encode(returnTo)))
+                .orElseGet(() -> redirectTo("/auth/start"));
     }
 
     /**
@@ -197,10 +208,17 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
     static String safeReturnTo(String path) {
         if (path == null || !path.startsWith("/") || path.startsWith("//")
                 || path.startsWith("/login") || path.startsWith("/auth/")) return OidcPendingLogin.DASHBOARD;
-        for (char c : path.toCharArray()) {
-            if (c < 0x20 || c == 0x7f || c == '\\') return OidcPendingLogin.DASHBOARD;
+        return isRelativeReference(path) ? path : OidcPendingLogin.DASHBOARD;
+    }
+
+    /** A well-formed URI with no scheme or host, so it can only name a path on this gateway. */
+    private static boolean isRelativeReference(String path) {
+        try {
+            var uri = new URI(path);
+            return uri.getScheme() == null && uri.getRawAuthority() == null;
+        } catch (URISyntaxException e) {
+            return false;
         }
-        return path;
     }
 
     /** Whether the email is permitted to sign in. A blank allowed-domain means no restriction. */

@@ -10,43 +10,18 @@
         h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
         p.subtitle { color: #666; margin-top: 0; margin-bottom: 32px; }
         .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 28px 24px; }
-        .btn-primary { display: block; width: 100%; padding: 10px; background: #0070d2; color: white; border: none; border-radius: 6px; font-size: 0.92rem; font-weight: 500; cursor: pointer; }
+        .btn-primary { display: block; box-sizing: border-box; text-align: center; text-decoration: none; width: 100%; padding: 10px; background: #0070d2; color: white; border: none; border-radius: 6px; font-size: 0.92rem; font-weight: 500; cursor: pointer; }
         .btn-primary:hover { background: #005fb2; }
         .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 20px; font-size: 0.88rem; font-weight: 500; background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
     </style>
 </head>
 <body>
     <h1>MCP Connections</h1>
-    <p class="subtitle" id="subtitle">Redirecting to Okta…</p>
+    <p class="subtitle">Sign in with your Okta account to continue.</p>
 
-    <div id="flash" style="display:none" class="flash"></div>
-    <div class="card" id="card" style="display:none">
-        <button class="btn-primary" id="submit-btn" onclick="signIn()">Sign in with Okta</button>
+    <div class="flash">You have been signed out.</div>
+    <div class="card">
+        <a class="btn-primary" href="/auth/start">Sign in with Okta</a>
     </div>
-
-    <script>
-        var params = new URLSearchParams(window.location.search);
-        var startUrl = '/auth/start' +
-            (params.get('return_to') ? '?return_to=' + encodeURIComponent(params.get('return_to')) : '');
-
-        function signIn() {
-            window.location.href = startUrl;
-        }
-
-        // Okta identifies the user itself, so normally go straight there: with a live Okta session
-        // the user is back on the gateway without seeing a prompt. Right after signing out, stay
-        // here instead, or the user would be signed straight back in.
-        var signedOut = params.get('flash') === 'logout';
-        if (signedOut) {
-            var el = document.getElementById('flash');
-            el.textContent = 'You have been signed out.';
-            el.style.display = 'block';
-            document.getElementById('subtitle').textContent = 'Sign in with your Okta account to continue.';
-            document.getElementById('card').style.display = 'block';
-            history.replaceState(null, '', '/login');
-        } else {
-            window.location.replace(startUrl);
-        }
-    </script>
 </body>
 </html>
