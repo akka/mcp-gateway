@@ -24,9 +24,12 @@ import io.akka.mcp.gateway.domain.OAuthRefreshToken;
 import io.akka.mcp.gateway.domain.UserSession;
 
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -69,10 +72,10 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
 
     private static final Logger log = LoggerFactory.getLogger(McpOAuthEndpoint.class);
 
-    private static final java.net.http.HttpClient HTTP_CLIENT = java.net.http.HttpClient.newBuilder()
-            .connectTimeout(java.time.Duration.ofSeconds(10))
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
             .build();
-    private static final java.time.Duration OKTA_REQUEST_TIMEOUT = java.time.Duration.ofSeconds(15);
+    private static final Duration OKTA_REQUEST_TIMEOUT = Duration.ofSeconds(15);
 
     private final String baseUrl;
     private final String oktaAuthorizationEndpoint;
@@ -100,7 +103,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                 String base = issuerUrl.endsWith("/") ? issuerUrl.substring(0, issuerUrl.length() - 1) : issuerUrl;
                 String discoveryUrl = base + "/.well-known/openid-configuration";
                 var resp = HTTP_CLIENT.send(
-                        java.net.http.HttpRequest.newBuilder()
+                        HttpRequest.newBuilder()
                                 .uri(java.net.URI.create(discoveryUrl))
                                 .timeout(OKTA_REQUEST_TIMEOUT)
                                 .GET().build(),
