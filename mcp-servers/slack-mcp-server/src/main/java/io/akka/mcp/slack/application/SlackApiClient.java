@@ -112,8 +112,10 @@ public class SlackApiClient {
     /**
      * Replace the text of the message at {@code ts} in {@code channel}. Slack only lets a user edit
      * their own messages and reports {@code cant_update_message} otherwise. The new text replaces the
-     * whole message, so {@code markAsAssistant} adds {@link #MESSAGE_PREFIX} again. Text that already
-     * starts with the marker, as when the model copies back a message it read, keeps just one.
+     * whole message: an empty {@code blocks} array clears the blocks Slack would otherwise keep and
+     * display instead of the new text, and {@code markAsAssistant} adds {@link #MESSAGE_PREFIX} again.
+     * Text that already starts with the marker, as when the model copies back a message it read,
+     * keeps just one.
      *
      * Covered by the same {@code chat:write} scope as {@link #postMessage}.
      */
@@ -122,6 +124,7 @@ public class SlackApiClient {
         body.put("channel", channel);
         body.put("ts", ts);
         body.put("text", markAsAssistant ? MESSAGE_PREFIX + withoutLeadingMarker(text) : text);
+        body.putArray("blocks");
         return callChatWrite("chat.update", body, "edit messages");
     }
 

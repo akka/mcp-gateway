@@ -106,6 +106,15 @@ public class SlackApiClientTest {
     }
 
     @Test
+    public void updateMessage_clearsTheBlocksSoTheNewTextIsWhatSlackShows() throws Exception {
+        client().updateMessage("C12345", "1700000000.000100", "fixed", true);
+
+        var blocks = SLACK.onlyRequest().body().path("blocks");
+        assertThat(blocks.isArray()).isTrue();
+        assertThat(blocks).isEmpty();
+    }
+
+    @Test
     public void updateMessage_canLeaveTheMarkerOff() throws Exception {
         client().updateMessage("C12345", "1700000000.000100", "hello team", false);
 
