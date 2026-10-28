@@ -14,7 +14,6 @@ import akka.javasdk.http.HttpResponses;
 import io.akka.mcp.gateway.application.OAuthPendingAuthorizationEntity;
 import io.akka.mcp.gateway.application.OidcPendingLoginEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
-import io.akka.mcp.gateway.application.UserSessionsByEmailView;
 import io.akka.mcp.gateway.domain.UserSession;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
@@ -333,20 +332,6 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
                 .forKeyValueEntity(state)
                 .method(OAuthPendingAuthorizationEntity::get)
                 .invoke();
-
-        // Flush any other still-valid sessions for this user before creating the new one, so a
-        // fresh login (which just re-verified current Okta group membership) can't be undercut
-        // by an older session elsewhere still running on stale, possibly-since-revoked groups.
-        var existingSessions = componentClient
-                .forView()
-                .method(UserSessionsByEmailView::getByEmail)
-                .invoke(new UserSessionsByEmailView.ByEmail(email));
-        for (var existing : existingSessions.sessions()) {
-            componentClient
-                    .forKeyValueEntity(existing.sessionToken())
-                    .method(UserSessionEntity::invalidate)
-                    .invoke();
-        }
 
         String sessionToken = UUID.randomUUID().toString();
         componentClient

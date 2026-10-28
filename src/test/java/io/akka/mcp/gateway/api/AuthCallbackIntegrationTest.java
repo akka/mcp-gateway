@@ -94,6 +94,18 @@ public class AuthCallbackIntegrationTest extends TestKitSupport {
     }
 
     @Test
+    public void callback_secondSignIn_keepsTheFirstSessionWorking() throws Exception {
+        signingInAs("someone@lightbend.com");
+        var firstBrowser = sessionCookie(callback(stateFrom(get("/auth/start"))));
+
+        var secondBrowser = sessionCookie(callback(stateFrom(get("/auth/start"))));
+
+        assertThat(secondBrowser).isNotEqualTo(firstBrowser);
+        assertThat(get("/auth/me", firstBrowser).statusCode()).isEqualTo(200);
+        assertThat(get("/auth/me", secondBrowser).statusCode()).isEqualTo(200);
+    }
+
+    @Test
     public void callback_withoutReturnTo_landsOnDashboard() throws Exception {
         signingInAs("someone@lightbend.com");
 
