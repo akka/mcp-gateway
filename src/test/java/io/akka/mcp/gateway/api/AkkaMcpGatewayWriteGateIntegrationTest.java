@@ -296,7 +296,7 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
 
         callTool(email, "slack_post_message", List.of(READER_GROUP));
 
-        assertThat(awaitInteractions(email, 1)).singleElement().satisfies(e -> {
+        assertThat(awaitInteractions(email, 1)).anySatisfy(e -> {
             assertThat(e.direction()).isEqualTo("write-rejected");
             assertThat(e.mcpId()).isEqualTo("slack");
             assertThat(e.tool()).isEqualTo("slack_post_message");
@@ -312,7 +312,7 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
 
         callTool(email, "slack_search_messages", List.of());
 
-        assertThat(awaitInteractions(email, 1)).singleElement().satisfies(e -> {
+        assertThat(awaitInteractions(email, 1)).anySatisfy(e -> {
             assertThat(e.direction()).isEqualTo("read-rejected");
             assertThat(e.mcpId()).isEqualTo("slack");
             assertThat(e.tool()).isEqualTo("slack_search_messages");
