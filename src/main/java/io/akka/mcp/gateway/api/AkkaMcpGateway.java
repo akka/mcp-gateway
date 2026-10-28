@@ -382,13 +382,13 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         if (!canInteract) {
             log.warn("MCP tools/call: {} access rejected for user {}: {}, read={}, write={}",
                     label, userEmail, toolName, session.canRead(readerGroup), session.canWrite(writerGroup));
+            String access = isWrite ? "write" : "read";
             componentClient
                     .forEventSourcedEntity(UUID.randomUUID().toString())
                     .method(McpInteractionEntity::record)
                     .invoke(new McpInteractionEntity.RecordCommand(
                             userEmail, client.getMcpId(), toolName,
-                            Map.of("reason", isWrite ? "write-not-permitted" : "read-not-permitted"),
-                            isWrite ? "write-rejected" : "read-rejected"));
+                            Map.of("reason", access + "-not-permitted"), access + "-rejected"));
             return errorJson(id, -32603, label + " access not permitted");
         }
 
