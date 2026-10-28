@@ -75,7 +75,7 @@ public class SlackApiClient {
     }
 
     /**
-     * A conversation as far as posting is concerned. {@code external} is true when it is shared
+     * A conversation as far as posting and editing are concerned. {@code external} is true when it is shared
      * outside the organisation (Slack Connect, including one still pending) or is named with the
      * {@code external-} prefix this organisation uses for customer and partner channels.
      */
