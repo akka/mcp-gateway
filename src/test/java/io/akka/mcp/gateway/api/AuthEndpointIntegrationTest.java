@@ -105,10 +105,12 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void permissions_withoutSession_redirectsToLogin() {
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/auth/permissions").responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+    public void permissions_withoutSession_redirectsToLoginWithReturnPath() {
+        var response = httpClient.GET("/auth/permissions").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?return_to=%2Fauth%2Fpermissions");
     }
 
 
@@ -120,10 +122,12 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void oktaStatusPage_withoutSession_redirectsToLogin() {
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/okta-status").responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+    public void oktaStatusPage_withoutSession_redirectsToLoginWithReturnPath() {
+        var response = httpClient.GET("/okta-status").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?return_to=%2Fokta-status");
     }
 
     @Test
@@ -188,11 +192,13 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     public void login_whenAlreadyLoggedIn_redirectsToDashboard() {
         var token = createSession("test@lightbend.com", "Test User", List.of());
 
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/login")
-                        .addHeader("Cookie", "SESSION=" + token)
-                        .responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+        var response = httpClient.GET("/login")
+                .addHeader("Cookie", "SESSION=" + token)
+                .invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/?flash=already-logged-in");
     }
 
     @Test
