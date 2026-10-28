@@ -4,6 +4,7 @@ import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.akka.mcp.gateway.application.HowToMcpClient;
 import io.akka.mcp.gateway.application.McpInteractionsByMcpView;
 import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import io.akka.mcp.gateway.testsupport.FakeMcpServer;
@@ -318,6 +319,21 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
             assertThat(e.params()).contains("read-not-permitted");
         });
         awaitInteractionUnderConnector("slack", email, "read-rejected");
+    }
+
+    @Test
+    public void aUserWithNoGroupsCallingAHowToTool_isRecordedAsReadRejectedUnderTheHowToConnector() throws Exception {
+        var email = "no-role-howto-" + UUID.randomUUID() + "@lightbend.com";
+
+        callTool(email, "howto_get_started", List.of());
+
+        assertThat(awaitInteractions(email, 1)).anySatisfy(e -> {
+            assertThat(e.direction()).isEqualTo("read-rejected");
+            assertThat(e.mcpId()).isEqualTo(HowToMcpClient.MCP_ID);
+            assertThat(e.tool()).isEqualTo("howto_get_started");
+            assertThat(e.params()).contains("read-not-permitted");
+        });
+        awaitInteractionUnderConnector(HowToMcpClient.MCP_ID, email, "read-rejected");
     }
 
     private void awaitInteractionUnderConnector(String mcpId, String email, String direction) {
