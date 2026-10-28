@@ -55,7 +55,7 @@ public class WorkspaceDocsMcpClient implements RemoteMcpClient {
                 # Google Docs (via the Google Workspace connector)
 
                 Docs is one of several products bundled under the single **Google Workspace** connector
-                (Drive, Docs, Gmail, Calendar). A single OAuth grant covers all of them, so files
+                (Drive, Docs, Sheets, Gmail, Calendar). A single OAuth grant covers all of them, so files
                 created in one product are reachable from the others.
 
                 ## To connect

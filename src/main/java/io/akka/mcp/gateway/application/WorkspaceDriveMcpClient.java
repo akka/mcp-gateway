@@ -55,7 +55,7 @@ public class WorkspaceDriveMcpClient implements RemoteMcpClient {
                 # Google Drive (via the Google Workspace connector)
 
                 Drive is one of several products bundled under the single **Google Workspace** connector
-                (Drive, Docs, Gmail, Calendar). A single OAuth grant covers all of them, so files
+                (Drive, Docs, Sheets, Gmail, Calendar). A single OAuth grant covers all of them, so files
                 created here are reachable from Docs, Sheets and Slides.
 
                 ## To connect

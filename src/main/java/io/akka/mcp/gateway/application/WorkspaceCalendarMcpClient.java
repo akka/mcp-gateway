@@ -55,7 +55,7 @@ public class WorkspaceCalendarMcpClient implements RemoteMcpClient {
                 # Google Calendar (via the Google Workspace connector)
 
                 Calendar is one of several products bundled under the single **Google Workspace**
-                connector (Drive, Docs, Gmail, Calendar). A single OAuth grant covers all of them.
+                connector (Drive, Docs, Sheets, Gmail, Calendar). A single OAuth grant covers all of them.
 
                 ## To connect
                 1. Open %s and sign in with Okta.

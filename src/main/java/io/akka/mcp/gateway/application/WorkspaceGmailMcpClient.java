@@ -55,7 +55,7 @@ public class WorkspaceGmailMcpClient implements RemoteMcpClient {
                 # Gmail (via the Google Workspace connector)
 
                 Gmail is one of several products bundled under the single **Google Workspace** connector
-                (Drive, Docs, Gmail, Calendar). A single OAuth grant covers all of them.
+                (Drive, Docs, Sheets, Gmail, Calendar). A single OAuth grant covers all of them.
 
                 ## To connect
                 1. Open %s and sign in with Okta.
