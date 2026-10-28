@@ -123,10 +123,10 @@ public class SlackApiClientTest {
     }
 
     @Test
-    public void postMessage_ofTextThatAlreadyCarriesTheMarker_marksItOnce() throws Exception {
+    public void postMessage_prefixesTheMarkerWithoutTouchingTheText() throws Exception {
         client().postMessage("C12345", MARKER + "hello team", null, true);
 
-        assertThat(SLACK.onlyRequest().body().path("text").asText()).isEqualTo(MARKER + "hello team");
+        assertThat(SLACK.onlyRequest().body().path("text").asText()).isEqualTo(MARKER + MARKER + "hello team");
     }
 
     @Test

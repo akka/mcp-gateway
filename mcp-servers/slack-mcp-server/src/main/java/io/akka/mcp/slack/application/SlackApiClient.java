@@ -104,7 +104,7 @@ public class SlackApiClient {
     public JsonNode postMessage(String channel, String text, String threadTs, boolean markAsAssistant) throws Exception {
         var body = MAPPER.createObjectNode();
         body.put("channel", channel);
-        body.put("text", markedText(text, markAsAssistant));
+        body.put("text", (markAsAssistant ? MESSAGE_PREFIX : "") + text);
         if (threadTs != null && !threadTs.isBlank()) body.put("thread_ts", threadTs);
         return callChatWrite("chat.postMessage", body, "post messages");
     }
@@ -112,7 +112,8 @@ public class SlackApiClient {
     /**
      * Replace the text of the message at {@code ts} in {@code channel}. Slack only lets a user edit
      * their own messages and reports {@code cant_update_message} otherwise. The new text replaces the
-     * whole message, so {@code markAsAssistant} adds {@link #MESSAGE_PREFIX} again.
+     * whole message, so {@code markAsAssistant} adds {@link #MESSAGE_PREFIX} again. Text that already
+     * starts with the marker, as when the model copies back a message it read, keeps just one.
      *
      * Covered by the same {@code chat:write} scope as {@link #postMessage}.
      */
@@ -120,14 +121,8 @@ public class SlackApiClient {
         var body = MAPPER.createObjectNode();
         body.put("channel", channel);
         body.put("ts", ts);
-        body.put("text", markedText(text, markAsAssistant));
+        body.put("text", markAsAssistant ? MESSAGE_PREFIX + withoutLeadingMarker(text) : text);
         return callChatWrite("chat.update", body, "edit messages");
-    }
-
-    /** Text that already starts with the marker, as when the model copies a message it read back, keeps just one. */
-    private static String markedText(String text, boolean markAsAssistant) {
-        if (!markAsAssistant) return text;
-        return MESSAGE_PREFIX + withoutLeadingMarker(text);
     }
 
     private static String withoutLeadingMarker(String text) {
