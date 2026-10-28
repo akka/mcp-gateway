@@ -3,15 +3,19 @@ package io.akka.mcp.gateway.api;
 import akka.javasdk.JsonSupport;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
+import io.akka.mcp.gateway.application.McpInteractionsByUserView;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.domain.McpConfig;
 import io.akka.mcp.gateway.testsupport.GatewayFixtures;
 import io.akka.mcp.gateway.domain.UserSession;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -106,6 +110,34 @@ public class AkkaMcpGatewayOktaAppGatingIntegrationTest extends TestKitSupport {
         // Denied the same way as "no client can handle this tool" — the reader never learns
         // the tool exists behind an unassigned app.
         assertThat(json.path("error").path("message").asText()).contains("No MCP client can handle tool");
+    }
+
+    @Test
+    public void toolsCall_withoutTheApp_isRecordedAsRejectedUnderTheConnector() throws Exception {
+        seedCachedOktaTool();
+        var email = "no-app-" + UUID.randomUUID() + "@lightbend.com";
+        var token = GatewayFixtures.mcpToken(componentClient, email, List.of("mcp-gateway-reader"), List.of());
+        Map<String, Object> request = Map.of(
+                "jsonrpc", "2.0", "id", 1, "method", "tools/call",
+                "params", Map.of("name", TOOL_NAME, "arguments", Map.of()));
+
+        httpClient.POST("/mcp")
+                .addHeader("Authorization", "Bearer " + token)
+                .withRequestBody(request)
+                .responseBodyAs(String.class)
+                .invoke();
+
+        Awaitility.await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            var entries = componentClient.forView()
+                    .method(McpInteractionsByUserView::getByUser)
+                    .invoke(new McpInteractionsByUserView.UserPageRequest(email, 0, 50)).interactions();
+            assertThat(entries).anySatisfy(e -> {
+                assertThat(e.direction()).isEqualTo("rejected");
+                assertThat(e.mcpId()).isEqualTo(MCP_ID);
+                assertThat(e.tool()).isEqualTo(TOOL_NAME);
+                assertThat(e.params()).contains("app-not-assigned");
+            });
+        });
     }
 
     /** A system the user has no access to must not show a write capability on the dashboard. */
