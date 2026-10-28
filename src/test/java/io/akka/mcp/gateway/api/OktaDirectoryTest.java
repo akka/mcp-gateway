@@ -14,13 +14,14 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class OktaAssignedAppsTest {
+public class OktaDirectoryTest {
 
     private static final String TOKEN = "api-token";
     private static final String EMAIL = "user@akka.io";
     private static final String USER_PATH = "/api/v1/users/" + EMAIL;
     private static final String USER_ID = "00u1";
     private static final String USER_JSON = "{\"id\":\"" + USER_ID + "\"}";
+    private static final String GROUPS_PATH = USER_PATH + "/groups";
 
     private FakeOkta okta;
     private final List<Duration> pauses = new ArrayList<>();
@@ -35,8 +36,8 @@ public class OktaAssignedAppsTest {
         okta.close();
     }
 
-    private OktaAssignedApps lookup() {
-        return new OktaAssignedApps(okta.url(), TOKEN, pauses::add);
+    private OktaDirectory lookup() {
+        return new OktaDirectory(okta.url(), TOKEN, pauses::add);
     }
 
     private static String app(String id, String label, String status) {
@@ -56,7 +57,7 @@ public class OktaAssignedAppsTest {
         okta.respond(USER_PATH, 200, USER_JSON);
         okta.respond("/api/v1/apps", 200, apps(app("0oa-visible", "Slack", "ACTIVE"), app("0oa-hidden", "Seamless", "ACTIVE")));
 
-        var result = lookup().forUser(EMAIL);
+        var result = lookup().appsFor(EMAIL);
 
         assertThat(result).contains(List.of(
                 new UserSession.App("0oa-visible", "Slack"),
@@ -71,7 +72,7 @@ public class OktaAssignedAppsTest {
         okta.respond(USER_PATH, 200, USER_JSON);
         okta.respond("/api/v1/apps", 200, apps(app("0oa-on", "On", "ACTIVE"), app("0oa-off", "Off", "INACTIVE")));
 
-        assertThat(lookup().forUser(EMAIL)).contains(List.of(new UserSession.App("0oa-on", "On")));
+        assertThat(lookup().appsFor(EMAIL)).contains(List.of(new UserSession.App("0oa-on", "On")));
     }
 
     @Test
@@ -79,7 +80,7 @@ public class OktaAssignedAppsTest {
         okta.respond(USER_PATH, 200, USER_JSON);
         okta.respond("/api/v1/apps", 200, "[{\"id\":\"0oa-1\",\"status\":\"ACTIVE\"}]");
 
-        assertThat(lookup().forUser(EMAIL)).contains(List.of(new UserSession.App("0oa-1", "0oa-1")));
+        assertThat(lookup().appsFor(EMAIL)).contains(List.of(new UserSession.App("0oa-1", "0oa-1")));
     }
 
     @Test
@@ -87,14 +88,14 @@ public class OktaAssignedAppsTest {
         okta.respond(USER_PATH, 200, USER_JSON);
         okta.respond("/api/v1/apps", 200, "[]");
 
-        assertThat(lookup().forUser(EMAIL)).contains(List.of());
+        assertThat(lookup().appsFor(EMAIL)).contains(List.of());
     }
 
     @Test
     void usesTheOidcSubjectWithoutLookingTheUserUp() {
         okta.respond("/api/v1/apps", 200, apps(app("0oa-1", "One", "ACTIVE")));
 
-        var result = lookup().forSubjectOrEmail(USER_ID, EMAIL);
+        var result = lookup().appsForSubjectOrEmail(USER_ID, EMAIL);
 
         assertThat(result).contains(List.of(new UserSession.App("0oa-1", "One")));
         assertThat(requestedPaths()).noneMatch(r -> r.startsWith("/api/v1/users/"));
@@ -105,7 +106,7 @@ public class OktaAssignedAppsTest {
         okta.respond(USER_PATH, 200, USER_JSON);
         okta.respond("/api/v1/apps", 200, apps(app("0oa-1", "One", "ACTIVE")));
 
-        var result = lookup().forSubjectOrEmail("some-other-subject", EMAIL);
+        var result = lookup().appsForSubjectOrEmail("some-other-subject", EMAIL);
 
         assertThat(result).contains(List.of(new UserSession.App("0oa-1", "One")));
         assertThat(requestedPaths()).anyMatch(r -> r.startsWith(USER_PATH));
@@ -118,7 +119,7 @@ public class OktaAssignedAppsTest {
                 .withHeader("Link", "<" + okta.url() + "/page2>; rel=\"next\""));
         okta.respond("/page2", 200, apps(app("0oa-2", "Two", "ACTIVE")));
 
-        assertThat(lookup().forUser(EMAIL)).contains(List.of(
+        assertThat(lookup().appsFor(EMAIL)).contains(List.of(
                 new UserSession.App("0oa-1", "One"),
                 new UserSession.App("0oa-2", "Two")));
     }
@@ -129,7 +130,7 @@ public class OktaAssignedAppsTest {
         okta.respondInOrder("/api/v1/apps", Reply.of(200, apps(app("0oa-1", "One", "ACTIVE")))
                 .withHeader("Link", "<https://evil.example/steal>; rel=\"next\""));
 
-        assertThat(lookup().forUser(EMAIL)).isEmpty();
+        assertThat(lookup().appsFor(EMAIL)).isEmpty();
         assertThat(requestedPaths()).noneMatch(r -> r.contains("evil.example"));
     }
 
@@ -139,7 +140,7 @@ public class OktaAssignedAppsTest {
         okta.respondInOrder("/api/v1/apps", Reply.of(200, apps(app("0oa-1", "One", "ACTIVE")))
                 .withHeader("Link", "<" + okta.url() + ".evil.example/steal>; rel=\"next\""));
 
-        assertThat(lookup().forUser(EMAIL)).isEmpty();
+        assertThat(lookup().appsFor(EMAIL)).isEmpty();
     }
 
     @Test
@@ -148,21 +149,21 @@ public class OktaAssignedAppsTest {
         okta.respondInOrder("/api/v1/apps", Reply.of(200, apps(app("0oa-1", "One", "ACTIVE")))
                 .withHeader("Link", "<" + okta.url() + "/api/v1/apps?after=again>; rel=\"next\""));
 
-        assertThat(lookup().forUser(EMAIL)).isEmpty();
+        assertThat(lookup().appsFor(EMAIL)).isEmpty();
     }
 
     @Test
     void reportsAFailureWhenTheUserCannotBeFound() {
         okta.respond(USER_PATH, 404, "{}");
 
-        assertThat(lookup().forUser(EMAIL)).isEmpty();
+        assertThat(lookup().appsFor(EMAIL)).isEmpty();
     }
 
     @Test
     void reportsAFailureWhenTheUserHasNoId() {
         okta.respond(USER_PATH, 200, "{}");
 
-        assertThat(lookup().forUser(EMAIL)).isEmpty();
+        assertThat(lookup().appsFor(EMAIL)).isEmpty();
     }
 
     @Test
@@ -170,7 +171,7 @@ public class OktaAssignedAppsTest {
         okta.respond(USER_PATH, 200, USER_JSON);
         okta.respond("/api/v1/apps", 200, "{\"errorCode\":\"E0000000\"}");
 
-        assertThat(lookup().forUser(EMAIL)).isEmpty();
+        assertThat(lookup().appsFor(EMAIL)).isEmpty();
     }
 
     @Test
@@ -178,7 +179,7 @@ public class OktaAssignedAppsTest {
         okta.respond(USER_PATH, 200, USER_JSON);
         okta.respond("/api/v1/apps", 403, "{\"errorCode\":\"E0000006\"}");
 
-        assertThat(lookup().forUser(EMAIL)).isEmpty();
+        assertThat(lookup().appsFor(EMAIL)).isEmpty();
     }
 
     @Test
@@ -188,7 +189,7 @@ public class OktaAssignedAppsTest {
                 Reply.of(429, "{}"),
                 Reply.of(200, apps(app("0oa-1", "One", "ACTIVE"))));
 
-        assertThat(lookup().forUser(EMAIL)).contains(List.of(new UserSession.App("0oa-1", "One")));
+        assertThat(lookup().appsFor(EMAIL)).contains(List.of(new UserSession.App("0oa-1", "One")));
         assertThat(pauses).hasSize(1);
     }
 
@@ -197,7 +198,7 @@ public class OktaAssignedAppsTest {
         okta.respond(USER_PATH, 200, USER_JSON);
         okta.respond("/api/v1/apps", 429, "{}");
 
-        assertThat(lookup().forUser(EMAIL)).isEmpty();
+        assertThat(lookup().appsFor(EMAIL)).isEmpty();
         assertThat(pauses).hasSize(2);
     }
 
@@ -208,7 +209,7 @@ public class OktaAssignedAppsTest {
                 Reply.of(429, "{}").withHeader("x-rate-limit-reset", String.valueOf(Instant.now().plusSeconds(3600).getEpochSecond())),
                 Reply.of(200, "[]"));
 
-        lookup().forUser(EMAIL);
+        lookup().appsFor(EMAIL);
 
         assertThat(pauses).singleElement().satisfies(wait ->
                 assertThat(wait).isBetween(Duration.ofSeconds(1), Duration.ofSeconds(5)));
@@ -216,8 +217,59 @@ public class OktaAssignedAppsTest {
 
     @Test
     void doesNothingWhenOktaIsNotConfigured() {
-        assertThat(new OktaAssignedApps("", TOKEN, pauses::add).forUser(EMAIL)).isEmpty();
-        assertThat(new OktaAssignedApps(okta.url(), "", pauses::add).forUser(EMAIL)).isEmpty();
+        assertThat(new OktaDirectory("", TOKEN, pauses::add).appsFor(EMAIL)).isEmpty();
+        assertThat(new OktaDirectory(okta.url(), "", pauses::add).appsFor(EMAIL)).isEmpty();
+        assertThat(okta.requests()).isEmpty();
+    }
+
+    @Test
+    void groupsFor_returnsTheGroupNamesOnce() {
+        okta.respond(GROUPS_PATH, 200, """
+                [{"profile":{"name":"mcp-gateway-reader"}},
+                 {"profile":{"name":"mcp-gateway-reader"}},
+                 {"profile":{}},
+                 {"profile":{"name":"mcp-gateway-admin"}}]""");
+
+        assertThat(lookup().groupsFor(EMAIL)).contains(List.of("mcp-gateway-reader", "mcp-gateway-admin"));
+        assertThat(okta.requests()).allMatch(r -> r.authorization().equals("SSWS " + TOKEN));
+    }
+
+    @Test
+    void groupsFor_isEmptyRatherThanNoGroupsWhenOktaRefusesTheToken() {
+        okta.respond(GROUPS_PATH, 403, "{}");
+
+        assertThat(lookup().groupsFor(EMAIL)).isEmpty();
+    }
+
+    @Test
+    void groupsFor_isEmptyWhenTheResponseIsNotAnArray() {
+        okta.respond(GROUPS_PATH, 200, "{\"errorCode\":\"E0000007\"}");
+
+        assertThat(lookup().groupsFor(EMAIL)).isEmpty();
+    }
+
+    @Test
+    void groupsFor_retriesAfterARateLimitAndThenSucceeds() {
+        okta.respondInOrder(GROUPS_PATH,
+                Reply.of(429, "{}"),
+                Reply.of(200, "[{\"profile\":{\"name\":\"mcp-gateway-reader\"}}]"));
+
+        assertThat(lookup().groupsFor(EMAIL)).contains(List.of("mcp-gateway-reader"));
+        assertThat(pauses).hasSize(1);
+    }
+
+    @Test
+    void groupsFor_givesUpWhenOktaDoesNotAnswerInTime() {
+        okta.respond(GROUPS_PATH, 200, "[]").hold(GROUPS_PATH);
+        var directory = new OktaDirectory(okta.url(), TOKEN, pauses::add, Duration.ofMillis(200));
+
+        assertThat(directory.groupsFor(EMAIL)).isEmpty();
+    }
+
+    @Test
+    void groupsFor_doesNothingWhenOktaIsNotConfigured() {
+        assertThat(new OktaDirectory("", TOKEN, pauses::add).groupsFor(EMAIL)).isEmpty();
+        assertThat(new OktaDirectory(okta.url(), "", pauses::add).groupsFor(EMAIL)).isEmpty();
         assertThat(okta.requests()).isEmpty();
     }
 }

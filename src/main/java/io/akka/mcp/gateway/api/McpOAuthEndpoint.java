@@ -20,18 +20,23 @@ import io.akka.mcp.gateway.application.OAuthPendingAuthorizationEntity;
 import io.akka.mcp.gateway.application.OAuthRefreshTokenEntity;
 import io.akka.mcp.gateway.application.OidcPendingLoginEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
+import io.akka.mcp.gateway.domain.OAuthRefreshToken;
 import io.akka.mcp.gateway.domain.UserSession;
 
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -67,13 +72,16 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
 
     private static final Logger log = LoggerFactory.getLogger(McpOAuthEndpoint.class);
 
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    private static final Duration OKTA_REQUEST_TIMEOUT = Duration.ofSeconds(15);
+
     private final String baseUrl;
     private final String oktaAuthorizationEndpoint;
     private final String oktaClientId;
     private final String oktaRedirectUri;
-    private final String oktaBaseUrl;
-    private final String oktaApiToken;
-    private final OktaAssignedApps oktaAssignedApps;
+    private final OktaDirectory oktaDirectory;
     private final List<String> redirectHostAllowlist;
 
     public McpOAuthEndpoint(ComponentClient componentClient, Config config) {
@@ -81,7 +89,6 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         this.baseUrl = mcpBaseUrl;
         this.oktaClientId = config.getString("okta.client-id");
         this.oktaRedirectUri = config.getString("okta.redirect-uri");
-        this.oktaApiToken = config.getString("okta.api-token");
         this.redirectHostAllowlist = java.util.Arrays.stream(config.getString("mcp.oauth.redirect-host-allowlist").split(","))
                 .map(String::trim)
                 .map(s -> s.toLowerCase(java.util.Locale.ROOT))
@@ -95,9 +102,10 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
             try {
                 String base = issuerUrl.endsWith("/") ? issuerUrl.substring(0, issuerUrl.length() - 1) : issuerUrl;
                 String discoveryUrl = base + "/.well-known/openid-configuration";
-                var resp = java.net.http.HttpClient.newHttpClient().send(
-                        java.net.http.HttpRequest.newBuilder()
+                var resp = HTTP_CLIENT.send(
+                        HttpRequest.newBuilder()
                                 .uri(java.net.URI.create(discoveryUrl))
+                                .timeout(OKTA_REQUEST_TIMEOUT)
                                 .GET().build(),
                         java.net.http.HttpResponse.BodyHandlers.ofString());
                 if (resp.statusCode() == 200) {
@@ -119,58 +127,29 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
                 log.warn("Could not parse OKTA_ISSUER_URL for base URL: {}", e.getMessage());
             }
         }
-        this.oktaBaseUrl = base;
-        this.oktaAssignedApps = new OktaAssignedApps(base, oktaApiToken);
+        this.oktaDirectory = new OktaDirectory(base, config.getString("okta.api-token"));
     }
 
-    /**
-     * Re-fetches the user's current Okta group membership via the Admin API, rather than
-     * trusting the (potentially stale) groups captured at the original authorization. Without
-     * this, a refresh_token grant would keep re-stamping whatever groups existed when the MCP
-     * client first authorized, so a role revoked in Okta later would never take effect for as
-     * long as the client keeps refreshing. Falls back to the stored groups if the lookup fails
-     * or isn't configured, so a transient Okta outage doesn't break token refresh.
-     */
-    private List<String> fetchCurrentGroups(String email, List<String> fallback) {
-        if (oktaApiToken.isBlank() || oktaBaseUrl.isBlank() || email == null || email.isBlank()) {
-            return fallback;
-        }
-        try {
-            var encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
-            var request = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create(oktaBaseUrl + "/api/v1/users/" + encodedEmail + "/groups"))
-                    .header("Authorization", "SSWS " + oktaApiToken)
-                    .header("Accept", "application/json")
-                    .GET().build();
-            var resp = java.net.http.HttpClient.newHttpClient()
-                    .send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() != 200) {
-                log.warn("Okta groups refresh: status={} for {}", resp.statusCode(), email);
-                return fallback;
-            }
-            var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
-            if (!json.isArray()) return fallback;
-            var groups = new java.util.ArrayList<String>();
-            for (var g : json) {
-                var name = g.path("profile").path("name").asText("");
-                if (!name.isBlank() && !groups.contains(name)) groups.add(name);
-            }
-            return groups;
-        } catch (Exception e) {
-            log.warn("Okta groups refresh failed for {}: {}", email, e.getMessage());
-            return fallback;
-        }
-    }
+    private record RefreshedAccess(List<String> groups, List<UserSession.App> apps, long accessTokenTtlSeconds) {}
 
     /**
-     * Re-fetches the user's current Okta app assignments, mirroring {@link #fetchCurrentGroups}.
-     * Without this, app-gated tools (okta-admin especially) would silently disappear on the next
-     * refresh, since the refresh grant doesn't otherwise know which apps are currently assigned.
-     * Falls back to the stored apps if the lookup fails or isn't configured.
+     * Re-reads the user's groups and apps from Okta. When a lookup fails the user keeps the stored
+     * apps, so {@code tools/list} stays complete, but gets no groups, so every {@code tools/call}
+     * is refused, and a short-lived access token, so the next lookup comes soon. The stored values
+     * stand only when the lookup is not configured.
      */
-    private List<io.akka.mcp.gateway.domain.UserSession.App> fetchCurrentApps(
-            String email, List<io.akka.mcp.gateway.domain.UserSession.App> fallback) {
-        return oktaAssignedApps.forUser(email).orElse(fallback);
+    private RefreshedAccess currentAccess(OAuthRefreshToken stored) {
+        if (!oktaDirectory.isConfigured()) {
+            return new RefreshedAccess(stored.groups(), stored.apps(), ACCESS_TOKEN_TTL_SECONDS);
+        }
+        var groups = oktaDirectory.groupsFor(stored.userId());
+        var apps = groups.isPresent() ? oktaDirectory.appsFor(stored.userId()) : Optional.<List<UserSession.App>>empty();
+        if (groups.isEmpty() || apps.isEmpty()) {
+            log.warn("Okta refresh: lookup did not complete for {}, so they hold no groups until the next refresh",
+                    stored.userId());
+            return new RefreshedAccess(List.of(), stored.apps(), LOOKUP_FAILED_ACCESS_TOKEN_TTL_SECONDS);
+        }
+        return new RefreshedAccess(groups.get(), apps.get(), ACCESS_TOKEN_TTL_SECONDS);
     }
 
     // ── Dynamic Client Registration ─────────────────────────────────────────
@@ -463,6 +442,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
     // ── Token Endpoint ───────────────────────────────────────────────────────
 
     private static final long ACCESS_TOKEN_TTL_SECONDS = 3600; // 1 hour
+    private static final long LOOKUP_FAILED_ACCESS_TOKEN_TTL_SECONDS = 60;
     private static final long REFRESH_TOKEN_TTL_DAYS   = 30;
 
     public record TokenResponse(String access_token, String token_type, long expires_in, String refresh_token) {}
@@ -562,32 +542,26 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
             return tokenError(StatusCodes.BAD_REQUEST, "invalid_client", "client_id does not match");
         }
 
+        var access = currentAccess(storedToken);
+
         // Revoke old refresh token (rotation)
         componentClient.forKeyValueEntity(refreshTokenValue)
                 .method(OAuthRefreshTokenEntity::revoke).invoke();
 
-        // Re-check current group membership and app assignments against Okta rather than
-        // trusting what was captured at the original authorization — otherwise a role revoked,
-        // or an app unassigned, since then would never take effect for as long as the client
-        // keeps refreshing (see issue #77).
-        List<String> currentGroups = fetchCurrentGroups(storedToken.userId(), storedToken.groups());
-        List<io.akka.mcp.gateway.domain.UserSession.App> currentApps =
-                fetchCurrentApps(storedToken.userId(), storedToken.apps());
-
         // Issue a new MCP access token for the user (not a browser session — see McpAccessToken).
         String newAccessToken = issueMcpAccessToken(
-                storedToken.userId(), storedToken.displayName(), currentGroups, currentApps,
-                clientId, Instant.now().plusSeconds(ACCESS_TOKEN_TTL_SECONDS));
+                storedToken.userId(), storedToken.displayName(), access.groups(), access.apps(),
+                clientId, Instant.now().plusSeconds(access.accessTokenTtlSeconds()));
 
         // Issue a new refresh token
         String newRefreshToken = issueRefreshToken(
                 storedToken.userId(), storedToken.displayName(),
-                clientId, currentGroups, currentApps, storedToken.idToken());
+                clientId, access.groups(), access.apps(), storedToken.idToken());
 
         return HttpResponse.create()
                 .withStatus(StatusCodes.OK)
-                .withEntity(ContentTypes.APPLICATION_JSON,
-                        toJson(new TokenResponse(newAccessToken, "Bearer", ACCESS_TOKEN_TTL_SECONDS, newRefreshToken)));
+                .withEntity(ContentTypes.APPLICATION_JSON, toJson(new TokenResponse(
+                        newAccessToken, "Bearer", access.accessTokenTtlSeconds(), newRefreshToken)));
     }
 
     private String issueMcpAccessToken(
