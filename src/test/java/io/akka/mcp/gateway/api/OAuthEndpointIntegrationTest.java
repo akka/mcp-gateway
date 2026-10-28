@@ -34,6 +34,24 @@ public class OAuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
+    public void staticOAuthConnect_withoutSession_redirectsToLoginReturningToConnect() {
+        var response = httpClient.GET("/googleworkspace/oauth/connect").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?return_to=%2Fgoogleworkspace%2Foauth%2Fconnect");
+    }
+
+    @Test
+    public void dcrOAuthConnect_withoutSession_redirectsToLoginReturningToConnect() {
+        var response = httpClient.GET("/zoho/oauth/connect").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?return_to=%2Fzoho%2Foauth%2Fconnect");
+    }
+
+    @Test
     public void signedOutLoginPage_isPublic() {
         var response = httpClient.GET("/login?flash=logout").responseBodyAs(String.class).invoke();
         assertThat(response.status().isSuccess()).isTrue();

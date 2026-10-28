@@ -157,7 +157,7 @@ public abstract class AbstractStaticOAuthEndpoint extends AbstractMcpConnectionE
     @Get("/connect")
     public HttpResponse connect() {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return redirectToLogin(endpointPath("/connect"));
         var blocked = connectBlockedReason(session.email());
         if (blocked.isPresent()) {
             recordConnectionEvent(session.email(), "connect-blocked", blocked.get());
