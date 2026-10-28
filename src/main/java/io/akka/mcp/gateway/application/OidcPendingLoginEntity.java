@@ -29,6 +29,6 @@ public class OidcPendingLoginEntity extends KeyValueEntity<OidcPendingLogin> {
         return effects().updateState(OidcPendingLogin.empty()).thenReply(Done.getInstance());
     }
 
-    /** @param returnTo gateway path to land on after sign-in; {@code null} means the dashboard */
+    /** @param returnTo gateway path to land on after sign-in, {@link OidcPendingLogin#DASHBOARD} by default */
     public record CreateCommand(String loginHint, Instant expiresAt, String codeVerifier, String returnTo) {}
 }

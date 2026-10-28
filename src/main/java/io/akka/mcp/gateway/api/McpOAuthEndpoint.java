@@ -21,6 +21,7 @@ import io.akka.mcp.gateway.application.OAuthRefreshTokenEntity;
 import io.akka.mcp.gateway.application.OidcPendingLoginEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
 import io.akka.mcp.gateway.domain.OAuthRefreshToken;
+import io.akka.mcp.gateway.domain.OidcPendingLogin;
 import io.akka.mcp.gateway.domain.UserSession;
 
 import java.net.URLEncoder;
@@ -256,7 +257,7 @@ public class McpOAuthEndpoint extends AbstractProtectedEndpoint {
         componentClient
                 .forKeyValueEntity(oauthState)
                 .method(OidcPendingLoginEntity::create)
-                .invoke(new OidcPendingLoginEntity.CreateCommand("", Instant.now().plusSeconds(600), codeVerifier, null));
+                .invoke(new OidcPendingLoginEntity.CreateCommand("", Instant.now().plusSeconds(600), codeVerifier, OidcPendingLogin.DASHBOARD));
 
         String oktaUrl = oktaAuthorizationEndpoint
                 + "?response_type=code"

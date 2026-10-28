@@ -14,6 +14,7 @@ import akka.javasdk.http.HttpResponses;
 import io.akka.mcp.gateway.application.OAuthPendingAuthorizationEntity;
 import io.akka.mcp.gateway.application.OidcPendingLoginEntity;
 import io.akka.mcp.gateway.application.UserSessionEntity;
+import io.akka.mcp.gateway.domain.OidcPendingLogin;
 import io.akka.mcp.gateway.domain.UserSession;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
@@ -142,7 +143,6 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
     @Get("/login")
     public HttpResponse loginPage() {
         if (requireSession() != null) return redirectTo("/?flash=already-logged-in");
-        // Never reuse a cached copy: a stale login page from an older deploy breaks the sign-in.
         return HttpResponses.staticResource("login.html")
                 .addHeader(RawHeader.create("Cache-Control", "no-cache"));
     }
@@ -184,11 +184,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
     public record LegacyInitiateRequest(String email) {}
     public record LegacyInitiateResponse(String redirectUrl) {}
 
-    /**
-     * Kept for login pages that browsers cached before the email field was removed: that page posts
-     * the typed email here and follows {@code redirectUrl}. The email is ignored; Okta identifies the
-     * user. Safe to delete once those cached copies have expired.
-     */
+    /** Sends a cached email-form login page on to {@code /auth/start}. The email is ignored. */
     @Post("/auth/initiate")
     public HttpResponse legacyInitiate(LegacyInitiateRequest ignored) {
         return HttpResponses.ok(new LegacyInitiateResponse("/auth/start"));
@@ -200,9 +196,9 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
      */
     static String safeReturnTo(String path) {
         if (path == null || !path.startsWith("/") || path.startsWith("//")
-                || path.startsWith("/login") || path.startsWith("/auth/")) return "/";
+                || path.startsWith("/login") || path.startsWith("/auth/")) return OidcPendingLogin.DASHBOARD;
         for (char c : path.toCharArray()) {
-            if (c < 0x20 || c == 0x7f || c == '\\') return "/";
+            if (c < 0x20 || c == 0x7f || c == '\\') return OidcPendingLogin.DASHBOARD;
         }
         return path;
     }
@@ -350,7 +346,7 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
 
         return HttpResponse.create()
                 .withStatus(StatusCodes.FOUND)
-                .addHeader(Location.create(pending.returnTo() == null ? "/" : pending.returnTo()))
+                .addHeader(Location.create(pending.landingPath()))
                 .addHeader(RawHeader.create("Set-Cookie",
                         "SESSION=" + sessionToken + "; HttpOnly; SameSite=Lax; Path=/"));
     }
