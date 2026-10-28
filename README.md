@@ -31,6 +31,8 @@ When running the gateway on your own machine, use `http://localhost:9000/mcp` in
 
 The first time your assistant contacts the gateway, a browser window opens and asks you to sign in with your Okta account. Approve the request, and the assistant is connected. You will not need to do this again until your session expires.
 
+If you are already signed in to Okta in that browser, the gateway signs you in without asking. **Sign out** on the dashboard ends only your gateway session and leaves you signed in to Okta, so your other Okta apps keep working. It also means the next visit, or **Sign in with Okta** on the signed-out page, signs that browser straight back in as the same Okta user. To switch to another account, or before leaving a shared computer, sign out of Okta as well.
+
 ### 3. Start asking
 
 Your assistant now has access to the connected systems. Simply ask for what you need — the gateway takes care of reaching the right system and returning the answer.
