@@ -72,7 +72,7 @@
 
             fetch('/auth/okta-status', { cache: 'no-store' })
                 .then(function(r) {
-                    if (r.status === 401 || r.redirected) { window.location.href = '/login'; return null; }
+                    if (r.status === 401 || r.redirected) { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); return null; }
                     return r.ok ? r.json().then(function(d) { return { ok: true, data: d }; })
                                 : r.text().then(function(t) { return { ok: false, text: t, status: r.status }; });
                 })

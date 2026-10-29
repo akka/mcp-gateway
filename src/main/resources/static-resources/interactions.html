@@ -173,7 +173,7 @@
 
             fetch(url, { cache: 'no-store' })
                 .then(function(r) {
-                    if (r.status === 302 || r.redirected) { window.location.href = '/login'; return null; }
+                    if (r.status === 302 || r.redirected) { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); return null; }
                     return r.json();
                 })
                 .then(function(data) {

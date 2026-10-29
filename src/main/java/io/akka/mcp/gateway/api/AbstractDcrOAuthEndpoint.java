@@ -105,7 +105,7 @@ public abstract class AbstractDcrOAuthEndpoint extends AbstractMcpConnectionEndp
     @Get("/connect")
     public HttpResponse connect() {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return redirectToLogin(endpointPath("/connect"));
         if (getMcpUrl().isBlank()) {
             return HttpResponses.internalServerError(getProviderLabel() + " MCP URL is not configured.");
         }

@@ -68,7 +68,7 @@
 
         fetch('/auth/me', { cache: 'no-store' })
             .then(function(r) {
-                if (r.status === 401 || r.redirected) { window.location.href = '/login'; return null; }
+                if (r.status === 401 || r.redirected) { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); return null; }
                 return r.json();
             })
             .then(function(data) {
@@ -100,7 +100,7 @@
                     '</div>';
                 }
             })
-            .catch(function() { window.location.href = '/login'; });
+            .catch(function() { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); });
     </script>
 </body>
 </html>

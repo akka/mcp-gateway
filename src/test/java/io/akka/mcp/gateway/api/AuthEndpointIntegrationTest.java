@@ -1,5 +1,6 @@
 package io.akka.mcp.gateway.api;
 
+import akka.http.javadsl.model.StatusCodes;
 import akka.javasdk.testkit.TestKit;
 import akka.javasdk.testkit.TestKitSupport;
 import io.akka.mcp.gateway.application.UserSessionEntity;
@@ -29,18 +30,78 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     // ── unauthenticated tests ────────────────────────────────────────────────
 
     @Test
-    public void loginPage_isPublic() {
-        var response = httpClient.GET("/login").responseBodyAs(String.class).invoke();
+    public void login_afterSignOut_showsSignedOutPageWithoutScript() {
+        var response = httpClient.GET("/login?flash=logout").responseBodyAs(String.class).invoke();
+
         assertThat(response.status().isSuccess()).isTrue();
+        assertThat(response.body()).contains("You have been signed out.").contains("href=\"/auth/start\"")
+                .doesNotContain("<script");
     }
 
     @Test
-    public void initiate_withNonLightbendEmail_returns400() {
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.POST("/auth/initiate")
-                        .withRequestBody(new AuthEndpoint.InitiateRequest("user@example.com"))
-                        .responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("400");
+    public void login_withoutSession_redirectsServerSideToOktaSignIn() {
+        var response = httpClient.GET("/login").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value())).hasValue("/auth/start");
+    }
+
+    @Test
+    public void login_withReturnTo_passesItOnToOktaSignIn() {
+        var response = httpClient.GET("/login?return_to=%2Finteractions%3Fx%3D1").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/auth/start?return_to=%2Finteractions%3Fx%3D1");
+    }
+
+    @Test
+    public void legacyInitiate_sendsCachedOldLoginPagesToTheEmailFreeSignIn() {
+        var response = httpClient.POST("/auth/initiate")
+                .withRequestBody(new AuthEndpoint.LegacyInitiateRequest("anyone@example.com"))
+                .responseBodyAs(AuthEndpoint.LegacyInitiateResponse.class)
+                .invoke();
+
+        assertThat(response.status().isSuccess()).isTrue();
+        assertThat(response.body().redirectUrl()).isEqualTo("/auth/start");
+    }
+
+    @Test
+    public void dashboard_withoutSession_redirectsToLoginWithReturnPath() {
+        var response = httpClient.GET("/").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?return_to=%2F");
+    }
+
+    @Test
+    public void safeReturnTo_keepsLocalPaths() {
+        assertThat(AuthEndpoint.safeReturnTo("/interactions")).isEqualTo("/interactions");
+        assertThat(AuthEndpoint.safeReturnTo("/admin/write-access?x=1")).isEqualTo("/admin/write-access?x=1");
+    }
+
+    @Test
+    public void safeReturnTo_rejectsAnythingThatCouldLeaveTheGateway() {
+        assertThat(AuthEndpoint.safeReturnTo(null)).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("https://evil.example")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("//evil.example")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/\\evil.example")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/x\r\nSet-Cookie: a=b")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/login")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/auth/logout")).isEqualTo("/");
+    }
+
+    @Test
+    public void safeReturnTo_rejectsPathsThatAreNotValidUris() {
+        assertThat(AuthEndpoint.safeReturnTo("/interactions with space")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/x?q=<script>")).isEqualTo("/");
+        assertThat(AuthEndpoint.safeReturnTo("/100%")).isEqualTo("/");
+    }
+
+    @Test
+    public void safeReturnTo_keepsPercentEncodedPaths() {
+        assertThat(AuthEndpoint.safeReturnTo("/interactions?q=a%20b")).isEqualTo("/interactions?q=a%20b");
     }
 
     @Test
@@ -67,17 +128,21 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void logout_withoutSession_redirects() {
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/auth/logout").responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+    public void logout_withoutSession_redirectsToSignedOutLoginPage() {
+        var response = httpClient.GET("/auth/logout").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?flash=logout");
     }
 
     @Test
-    public void permissions_withoutSession_redirectsToLogin() {
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/auth/permissions").responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+    public void permissions_withoutSession_redirectsToLoginWithReturnPath() {
+        var response = httpClient.GET("/auth/permissions").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?return_to=%2Fauth%2Fpermissions");
     }
 
 
@@ -89,10 +154,12 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void oktaStatusPage_withoutSession_redirectsToLogin() {
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/okta-status").responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+    public void oktaStatusPage_withoutSession_redirectsToLoginWithReturnPath() {
+        var response = httpClient.GET("/okta-status").invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?return_to=%2Fokta-status");
     }
 
     @Test
@@ -157,21 +224,30 @@ public class AuthEndpointIntegrationTest extends TestKitSupport {
     public void login_whenAlreadyLoggedIn_redirectsToDashboard() {
         var token = createSession("test@lightbend.com", "Test User", List.of());
 
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/login")
-                        .addHeader("Cookie", "SESSION=" + token)
-                        .responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+        var response = httpClient.GET("/login")
+                .addHeader("Cookie", "SESSION=" + token)
+                .invoke();
+
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/?flash=already-logged-in");
     }
 
     @Test
-    public void logout_withSession_clearsSessionAndRedirects() {
+    public void logout_withSession_endsTheGatewaySessionOnly() {
         var token = createSession("test@lightbend.com", "Test User", List.of());
 
-        var ex = assertThrows(Exception.class, () ->
-                httpClient.GET("/auth/logout")
-                        .addHeader("Cookie", "SESSION=" + token)
+        var response = httpClient.GET("/auth/logout")
+                .addHeader("Cookie", "SESSION=" + token)
+                .invoke();
+
+        // Stays on the gateway: no detour through Okta's logout, so the Okta session survives.
+        assertThat(response.status()).isEqualTo(StatusCodes.FOUND);
+        assertThat(response.httpResponse().getHeader("Location").map(h -> h.value()))
+                .hasValue("/login?flash=logout");
+        var me = assertThrows(Exception.class, () ->
+                httpClient.GET("/auth/me").addHeader("Cookie", "SESSION=" + token)
                         .responseBodyAs(String.class).invoke());
-        assertThat(ex.getMessage()).contains("302");
+        assertThat(me.getMessage()).contains("401");
     }
 }

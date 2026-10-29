@@ -87,7 +87,7 @@ public class McpInteractionEndpoint extends AbstractProtectedEndpoint {
     @Get("")
     public HttpResponse interactionsPage() {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return redirectToLogin("/interactions");
         var denied = requireAdmin(session);
         if (denied != null) return denied;
         return HttpResponses.staticResource("interactions.html");

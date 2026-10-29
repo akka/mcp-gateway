@@ -6,6 +6,7 @@ import akka.http.javadsl.model.HttpResponse;
 import akka.http.javadsl.model.StatusCodes;
 import akka.http.javadsl.model.headers.Location;
 import akka.http.javadsl.model.headers.RawHeader;
+import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.AbstractHttpEndpoint;
 import com.typesafe.config.Config;
@@ -17,6 +18,8 @@ import io.akka.mcp.gateway.domain.WriteAccess;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 /**
@@ -149,6 +152,16 @@ public abstract class AbstractProtectedEndpoint extends AbstractHttpEndpoint {
         return HttpResponse.create()
                 .withStatus(StatusCodes.FOUND)
                 .addHeader(Location.create("/login"));
+    }
+
+    /** For page routes: after signing in, the browser comes back to {@code returnTo}. */
+    protected HttpResponse redirectToLogin(String returnTo) {
+        return redirectTo("/login?return_to=" + URLEncoder.encode(returnTo, StandardCharsets.UTF_8));
+    }
+
+    /** {@code route} under this endpoint's {@code @HttpEndpoint} path, e.g. {@code /zoho/oauth/connect}. */
+    protected String endpointPath(String route) {
+        return getClass().getAnnotation(HttpEndpoint.class).value() + route;
     }
 
     protected HttpResponse unauthorized() {

@@ -555,9 +555,9 @@
         (function() {
             var params = new URLSearchParams(window.location.search);
             var flash = params.get('flash');
-            if (flash === 'login' || flash === 'already-logged-in') {
+            if (flash === 'already-logged-in') {
                 var el = document.getElementById('flash');
-                el.textContent = flash === 'login' ? 'Signed in successfully.' : 'You are already signed in.';
+                el.textContent = 'You are already signed in.';
                 el.style.display = 'block';
                 history.replaceState(null, '', '/');
             }
@@ -590,7 +590,7 @@
 
         fetch('/auth/me', { cache: 'no-store' })
             .then(function(r) {
-                if (r.status === 401 || r.redirected) { window.location.href = '/login'; return null; }
+                if (r.status === 401 || r.redirected) { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); return null; }
                 return r.json();
             })
             .then(function(data) {
@@ -721,7 +721,7 @@
                         Object.values(STATUS_FETCHERS).forEach(function(fn) { fn(); });
                     });
             })
-            .catch(function() { window.location.href = '/login'; });
+            .catch(function() { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); });
     </script>
 </body>
 </html>

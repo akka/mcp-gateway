@@ -70,7 +70,7 @@
         function load() {
             fetch('/admin/write-access/data', { cache: 'no-store' })
                 .then(function(r) {
-                    if (r.status === 401 || r.redirected) { window.location.href = '/login'; return null; }
+                    if (r.status === 401 || r.redirected) { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); return null; }
                     if (r.status === 403) { throw new Error('Admin access is required.'); }
                     if (!r.ok) { throw new Error('HTTP ' + r.status); }
                     return r.json();
@@ -145,7 +145,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabledMcpIds: now, basedOnVersion: version })
             }).then(function(r) {
-                if (r.status === 401) { window.location.href = '/login'; return null; }
+                if (r.status === 401) { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); return null; }
                 if (!r.ok) { return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); }); }
                 return r.json();
             }).then(function(d) {
