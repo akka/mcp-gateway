@@ -28,6 +28,9 @@ jobs:
       - name: Test
         run: mvn test --batch-mode
 
+      - name: Integration test
+        run: mvn verify --batch-mode
+
       - name: Lint mcp-servers
         run: |
           mvn -f mcp-servers/akka-salesforce-mcp-server/pom.xml checkstyle:check --batch-mode
