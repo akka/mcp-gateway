@@ -8,7 +8,6 @@ import akka.http.javadsl.model.headers.RawHeader;
 import akka.javasdk.annotations.Acl;
 import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
-import akka.javasdk.annotations.http.Post;
 import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.HttpResponses;
 import io.akka.mcp.gateway.application.OAuthPendingAuthorizationEntity;
@@ -190,15 +189,6 @@ public class AuthEndpoint extends AbstractProtectedEndpoint {
         return HttpResponse.create()
                 .withStatus(StatusCodes.FOUND)
                 .addHeader(Location.create(authUrl));
-    }
-
-    public record LegacyInitiateRequest(String email) {}
-    public record LegacyInitiateResponse(String redirectUrl) {}
-
-    /** Sends a cached email-form login page on to {@code /auth/start}. The email is ignored. */
-    @Post("/auth/initiate")
-    public HttpResponse legacyInitiate(LegacyInitiateRequest ignored) {
-        return HttpResponses.ok(new LegacyInitiateResponse("/auth/start"));
     }
 
     /**
