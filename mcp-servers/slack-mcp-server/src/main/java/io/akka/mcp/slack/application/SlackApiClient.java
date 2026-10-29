@@ -75,7 +75,7 @@ public class SlackApiClient {
     }
 
     /**
-     * A conversation as far as posting is concerned. {@code external} is true when it is shared
+     * A conversation as far as posting and editing are concerned. {@code external} is true when it is shared
      * outside the organisation (Slack Connect, including one still pending) or is named with the
      * {@code external-} prefix this organisation uses for customer and partner channels.
      */
@@ -106,13 +106,44 @@ public class SlackApiClient {
         body.put("channel", channel);
         body.put("text", (markAsAssistant ? MESSAGE_PREFIX : "") + text);
         if (threadTs != null && !threadTs.isBlank()) body.put("thread_ts", threadTs);
+        return callChatWrite("chat.postMessage", body, "post messages");
+    }
+
+    /**
+     * Replace the text of the message at {@code ts} in {@code channel}. Slack only lets a user edit
+     * their own messages and reports {@code cant_update_message} otherwise. The new text replaces the
+     * whole message: an empty {@code blocks} array clears the blocks Slack would otherwise keep and
+     * display instead of the new text, and {@code markAsAssistant} adds {@link #MESSAGE_PREFIX} again.
+     * Text that already starts with the marker, as when the model copies back a message it read,
+     * keeps just one.
+     *
+     * Covered by the same {@code chat:write} scope as {@link #postMessage}.
+     */
+    public JsonNode updateMessage(String channel, String ts, String text, boolean markAsAssistant) throws Exception {
+        var body = MAPPER.createObjectNode();
+        body.put("channel", channel);
+        body.put("ts", ts);
+        body.put("text", markAsAssistant ? MESSAGE_PREFIX + withoutLeadingMarker(text) : text);
+        body.putArray("blocks");
+        return callChatWrite("chat.update", body, "edit messages");
+    }
+
+    private static String withoutLeadingMarker(String text) {
+        var marker = MESSAGE_PREFIX.strip();
+        var rest = text;
+        while (rest.startsWith(marker)) rest = rest.substring(marker.length()).stripLeading();
+        return rest;
+    }
+
+    /** {@code action} names what the user tried, for the reconnect guidance on {@code missing_scope}. */
+    private JsonNode callChatWrite(String method, JsonNode body, String action) throws Exception {
         try {
-            return callPost(base + "chat.postMessage", MAPPER.writeValueAsString(body));
+            return callPost(base + method, MAPPER.writeValueAsString(body));
         } catch (SlackApiException e) {
             if (MISSING_SCOPE.equals(e.slackError())) {
                 throw new SlackApiException(MISSING_SCOPE,
-                        "Your Slack connection cannot post messages yet. Disconnect and reconnect Slack on the "
-                                + "gateway dashboard to grant posting (this also needs the gateway writer role).");
+                        "Your Slack connection cannot " + action + " yet. Disconnect and reconnect Slack on the "
+                                + "gateway dashboard to grant it (this also needs the gateway writer role).");
             }
             throw e;
         }

@@ -75,7 +75,7 @@ public class SlackApiClientTest {
         assertThatThrownBy(() -> client().postMessage("C12345", "hi", null, true))
                 .isInstanceOfSatisfying(SlackApiClient.SlackApiException.class, e -> {
                     assertThat(e.slackError()).isEqualTo("missing_scope");
-                    assertThat(e.getMessage()).isNotEqualTo("Slack API error: missing_scope");
+                    assertThat(e.getMessage()).contains("cannot post messages", "reconnect");
                 });
     }
 
@@ -87,6 +87,84 @@ public class SlackApiClientTest {
                 .isInstanceOfSatisfying(SlackApiClient.SlackApiException.class, e -> {
                     assertThat(e.slackError()).isEqualTo("channel_not_found");
                     assertThat(e.getMessage()).isEqualTo("Slack API error: channel_not_found");
+                });
+    }
+
+    @Test
+    public void updateMessage_postsJsonToChatUpdateAsTheUser() throws Exception {
+        var reply = client().updateMessage("C12345", "1700000000.000100", "`akka.db.*` fixed", true);
+
+        var request = SLACK.onlyRequest();
+        assertThat(request.method()).isEqualTo("POST");
+        assertThat(request.path()).isEqualTo("/chat.update");
+        assertThat(request.authorization()).isEqualTo("Bearer xoxp-user-token");
+        assertThat(request.contentType()).startsWith("application/json");
+        assertThat(request.body().path("channel").asText()).isEqualTo("C12345");
+        assertThat(request.body().path("ts").asText()).isEqualTo("1700000000.000100");
+        assertThat(request.body().path("text").asText()).isEqualTo(MARKER + "`akka.db.*` fixed");
+        assertThat(reply.path("ts").asText()).isEqualTo("1700000000.000100");
+    }
+
+    @Test
+    public void updateMessage_clearsTheBlocksSoTheNewTextIsWhatSlackShows() throws Exception {
+        client().updateMessage("C12345", "1700000000.000100", "fixed", true);
+
+        var blocks = SLACK.onlyRequest().body().path("blocks");
+        assertThat(blocks.isArray()).isTrue();
+        assertThat(blocks).isEmpty();
+    }
+
+    @Test
+    public void updateMessage_canLeaveTheMarkerOff() throws Exception {
+        client().updateMessage("C12345", "1700000000.000100", "hello team", false);
+
+        assertThat(SLACK.onlyRequest().body().path("text").asText()).isEqualTo("hello team");
+    }
+
+    @Test
+    public void updateMessage_ofTextThatAlreadyCarriesTheMarker_marksItOnce() throws Exception {
+        client().updateMessage("C12345", "1700000000.000100", MARKER + "hello again", true);
+        client().updateMessage("C12345", "1700000000.000100", "🤖hello again", true);
+        client().updateMessage("C12345", "1700000000.000100", MARKER + MARKER + "hello again", true);
+
+        assertThat(SLACK.requests()).hasSize(3)
+                .allSatisfy(r -> assertThat(r.body().path("text").asText()).isEqualTo(MARKER + "hello again"));
+    }
+
+    @Test
+    public void postMessage_prefixesTheMarkerWithoutTouchingTheText() throws Exception {
+        client().postMessage("C12345", MARKER + "hello team", null, true);
+
+        assertThat(SLACK.onlyRequest().body().path("text").asText()).isEqualTo(MARKER + MARKER + "hello team");
+    }
+
+    @Test
+    public void markerInTheMiddleOfTheText_isLeftAlone() throws Exception {
+        client().updateMessage("C12345", "1700000000.000100", "deploy 🤖 bot", true);
+
+        assertThat(SLACK.onlyRequest().body().path("text").asText()).isEqualTo(MARKER + "deploy 🤖 bot");
+    }
+
+    @Test
+    public void updateMessage_whenTheTokenLacksChatWrite_reportsTheSlackErrorCodeWithGuidance() {
+        SLACK.replyingWith("/chat.update", "{\"ok\":false,\"error\":\"missing_scope\"}");
+
+        assertThatThrownBy(() -> client().updateMessage("C12345", "1700000000.000100", "hi", true))
+                .isInstanceOfSatisfying(SlackApiClient.SlackApiException.class, e -> {
+                    assertThat(e.slackError()).isEqualTo("missing_scope");
+                    assertThat(e.getMessage()).contains("cannot edit messages", "reconnect")
+                            .doesNotContain("post");
+                });
+    }
+
+    @Test
+    public void updateMessage_ofSomeoneElsesMessage_passesTheSlackErrorThroughAsIs() {
+        SLACK.replyingWith("/chat.update", "{\"ok\":false,\"error\":\"cant_update_message\"}");
+
+        assertThatThrownBy(() -> client().updateMessage("C12345", "1700000000.000100", "hi", true))
+                .isInstanceOfSatisfying(SlackApiClient.SlackApiException.class, e -> {
+                    assertThat(e.slackError()).isEqualTo("cant_update_message");
+                    assertThat(e.getMessage()).isEqualTo("Slack API error: cant_update_message");
                 });
     }
 

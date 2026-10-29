@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * The gateway decides whether a tool needs the writer role from the {@code readOnlyHint} this
  * server advertises. A write tool advertised as read-only would skip the gateway's write gate
- * entirely, so the annotations are pinned here, together with the wiring of the one write tool.
+ * entirely, so the annotations are pinned here, together with the wiring of the write tools.
  */
 public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
 
@@ -67,6 +67,8 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
     }
 
     private static final String MARKER = "🤖 ";
+    private static final List<String> WRITE_TOOLS =
+            List.of("slack_post_message", "slack_update_message", "slack_draft_message");
 
     private List<FakeSlackApi.Request> postsToSlack() {
         return SLACK.requests().stream().filter(r -> r.path().equals("/chat.postMessage")).toList();
@@ -87,6 +89,7 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
         assertThat(tool).isNotNull();
         assertThat(tool.path("annotations").path("readOnlyHint").asBoolean(true)).isFalse();
         assertThat(tool.path("annotations").path("destructiveHint").asBoolean(true)).isFalse();
+        assertThat(tool.path("annotations").path("idempotentHint").asBoolean(true)).isFalse();
         assertThat(tool.path("inputSchema").path("required")).extracting(JsonNode::asText)
                 .containsExactlyInAnyOrder("channel", "text");
         assertThat(tool.path("inputSchema").path("properties").path("omit_assistant_marker").path("type").asText())
@@ -99,7 +102,7 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
 
         assertThat(tools).containsKeys("slack_list_channels", "slack_search_messages");
         tools.forEach((name, tool) -> {
-            if (!name.equals("slack_post_message") && !name.equals("slack_draft_message")) {
+            if (!WRITE_TOOLS.contains(name)) {
                 assertThat(tool.path("annotations").path("readOnlyHint").asBoolean(false))
                         .as("%s should be read-only", name).isTrue();
             }
@@ -255,6 +258,112 @@ public class SlackMcpEndpointIntegrationTest extends TestKitSupport {
         var response = postMessage("user-token", Map.of("channel", "C0", "text", "hello team"));
 
         assertThat(isToolError(response)).isTrue();
+    }
+
+    private JsonNode updateMessage(String bearer, Map<String, Object> arguments) throws Exception {
+        return rpc(bearer, Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
+                "params", Map.of("name", "slack_update_message", "arguments", arguments)));
+    }
+
+    private static final String TS = "1700000000.000100";
+
+    private List<FakeSlackApi.Request> updatesToSlack() {
+        return SLACK.requests().stream().filter(r -> r.path().equals("/chat.update")).toList();
+    }
+
+    @Test
+    public void updateMessage_isAdvertisedAsAnIdempotentWriteTool() throws Exception {
+        var tool = toolsByName().get("slack_update_message");
+
+        assertThat(tool).isNotNull();
+        assertThat(tool.path("annotations").path("readOnlyHint").asBoolean(true)).isFalse();
+        assertThat(tool.path("annotations").path("destructiveHint").asBoolean(true)).isFalse();
+        assertThat(tool.path("annotations").path("idempotentHint").asBoolean(false)).isTrue();
+        assertThat(tool.path("inputSchema").path("required")).extracting(JsonNode::asText)
+                .containsExactlyInAnyOrder("channel", "ts", "text");
+        assertThat(tool.path("inputSchema").path("properties").path("omit_assistant_marker").path("type").asText())
+                .isEqualTo("boolean");
+    }
+
+    @Test
+    public void updateMessage_withoutATokenIsRefused() throws Exception {
+        var response = updateMessage(null, Map.of("channel", "C1", "ts", TS, "text", "hi"));
+
+        assertThat(response.path("error").path("code").asInt()).isEqualTo(-32001);
+        assertThat(SLACK.requests()).isEmpty();
+    }
+
+    @Test
+    public void updateMessage_sendsTheArgumentsToSlackAsTheCaller_andKeepsTheMarker() throws Exception {
+        var response = updateMessage("user-token", Map.of("channel", "C123", "ts", TS, "text", "`akka.db.*`"));
+
+        assertThat(isToolError(response)).isFalse();
+        var sent = updatesToSlack().get(0);
+        assertThat(sent.authorization()).isEqualTo("Bearer user-token");
+        assertThat(sent.body().path("channel").asText()).isEqualTo("C123");
+        assertThat(sent.body().path("ts").asText()).isEqualTo(TS);
+        assertThat(sent.body().path("text").asText()).isEqualTo(MARKER + "`akka.db.*`");
+    }
+
+    @Test
+    public void updateMessage_canLeaveTheMarkerOff_onlyWhenAskedTo() throws Exception {
+        updateMessage("user-token", Map.of("channel", "C123", "ts", TS, "text", "one", "omit_assistant_marker", true));
+        updateMessage("user-token", Map.of("channel", "C123", "ts", TS, "text", "two", "omit_assistant_marker", false));
+        updateMessage("user-token", Map.of("channel", "C123", "ts", TS, "text", "three"));
+
+        assertThat(updatesToSlack()).extracting(r -> r.body().path("text").asText())
+                .containsExactly("one", MARKER + "two", MARKER + "three");
+    }
+
+    @Test
+    public void updateMessage_inAChannelSharedOutsideAkka_isNeverEdited() throws Exception {
+        var externalChannels = List.of(
+                FakeSlackApi.channel("shared-with-acme", true, false),
+                FakeSlackApi.channel("shared-with-acme", false, true),
+                FakeSlackApi.channel("external-acme-support", false, false));
+        for (var channel : externalChannels) {
+            SLACK.reset();
+            SLACK.replyingWith("/conversations.info", channel);
+
+            var response = updateMessage("user-token",
+                    Map.of("channel", "C123", "ts", TS, "text", "hello customer", "omit_assistant_marker", true));
+
+            assertThat(isToolError(response)).as(channel).isTrue();
+            assertThat(updatesToSlack()).as(channel).isEmpty();
+            assertThat(resultText(response)).as(channel).contains("Not edited", "hello customer")
+                    .doesNotContain(MARKER.trim());
+        }
+    }
+
+    @Test
+    public void updateMessage_whenTheChannelCannotBeChecked_isNotEdited() throws Exception {
+        SLACK.replyingWith("/conversations.info", "{\"ok\":false,\"error\":\"channel_not_found\"}");
+
+        var response = updateMessage("user-token", Map.of("channel", "C123", "ts", TS, "text", "hello team"));
+
+        assertThat(isToolError(response)).isTrue();
+        assertThat(resultText(response)).contains("Not edited", "channel_not_found", "hello team");
+        assertThat(updatesToSlack()).isEmpty();
+    }
+
+    @Test
+    public void updateMessage_withAMissingArgument_isAToolErrorAndNeverReachesSlack() throws Exception {
+        var noTs = updateMessage("user-token", Map.of("channel", "C123", "text", "hello team"));
+        var noText = updateMessage("user-token", Map.of("channel", "C123", "ts", TS));
+        var noChannel = updateMessage("user-token", Map.of("ts", TS, "text", "hello team"));
+
+        assertThat(List.of(noTs, noText, noChannel)).allSatisfy(r -> assertThat(isToolError(r)).isTrue());
+        assertThat(SLACK.requests()).isEmpty();
+    }
+
+    @Test
+    public void updateMessage_ofSomeoneElsesMessage_isAToolErrorWithSlacksReason() throws Exception {
+        SLACK.replyingWith("/chat.update", "{\"ok\":false,\"error\":\"cant_update_message\"}");
+
+        var response = updateMessage("user-token", Map.of("channel", "C123", "ts", TS, "text", "hello team"));
+
+        assertThat(isToolError(response)).isTrue();
+        assertThat(resultText(response)).contains("cant_update_message");
     }
 
     private JsonNode draftMessage(String bearer, Map<String, Object> arguments) throws Exception {

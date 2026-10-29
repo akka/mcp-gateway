@@ -51,7 +51,8 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
             new AdvertisedTool("okta_create_user", false));
     private static final FakeMcpServer SLACK = FakeMcpServer.start().advertising(
             new AdvertisedTool("slack_search_messages", true),
-            new AdvertisedTool("slack_post_message", false));
+            new AdvertisedTool("slack_post_message", false),
+            new AdvertisedTool("slack_update_message", false));
 
     @AfterAll
     public static void stopFakeUpstreams() {
@@ -194,6 +195,35 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
         assertThat(SLACK.callsTo("slack_post_message")).isEmpty();
     }
 
+    /** Editing a message is a write like posting one, on the user's own Slack token. */
+    @Test
+    public void updateMessage_reachesTheUpstreamForAWriter_asTheUser() throws Exception {
+        var response = callTool("slack_update_message", List.of(READER_GROUP, WRITER_GROUP));
+
+        assertThat(succeeded(response)).isTrue();
+        assertThat(SLACK.callsTo("slack_update_message")).singleElement()
+                .satisfies(call -> assertThat(call.authorization()).isEqualTo("Bearer slack-access"));
+    }
+
+    @Test
+    public void updateMessage_requiresTheWriterGroup() throws Exception {
+        var response = callTool("slack_update_message", List.of(READER_GROUP));
+
+        assertThat(response.has("error")).isTrue();
+        assertThat(response.has("result")).isFalse();
+        assertThat(SLACK.callsTo("slack_update_message")).isEmpty();
+    }
+
+    @Test
+    public void updateMessage_isRefusedForAWriter_whenWritesAreDisabledOnSlack() throws Exception {
+        enableWritesOn(List.of());
+
+        var response = callTool("slack_update_message", List.of(READER_GROUP, WRITER_GROUP));
+
+        assertThat(refusedByGateway(response)).isTrue();
+        assertThat(SLACK.callsTo("slack_update_message")).isEmpty();
+    }
+
     /**
      * Every tool the upstreams advertise is listed for every caller: a writer, a reader, a user with no
      * role, and a user who has not connected Slack (served from the cache), on read-only and write-enabled
@@ -201,7 +231,8 @@ public class AkkaMcpGatewayWriteGateIntegrationTest extends TestKitSupport {
      */
     @Test
     public void toolsList_isIdenticalForEveryCaller() throws Exception {
-        var everyTool = List.of("okta_list_users", "okta_create_user", "slack_search_messages", "slack_post_message");
+        var everyTool = List.of("okta_list_users", "okta_create_user", "slack_search_messages", "slack_post_message",
+                "slack_update_message");
         var notConnected = "no-slack-" + UUID.randomUUID() + "@lightbend.com";
 
         var writer = new HashSet<>(listedTools(USER_EMAIL, List.of(READER_GROUP, WRITER_GROUP)));
