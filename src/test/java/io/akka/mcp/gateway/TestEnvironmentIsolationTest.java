@@ -29,7 +29,9 @@ public class TestEnvironmentIsolationTest {
     @Test
     public void environmentOverridesFromApplicationConf_areNotVisibleToTests() throws IOException {
         var visible = overriddenInApplicationConf().stream().filter(name -> System.getenv(name) != null).toList();
-        assertThat(visible).isEmpty();
+        assertThat(visible)
+                .as("run through Maven, whose surefire/failsafe config strips these variables; an IDE run inherits them")
+                .isEmpty();
     }
 
     private static Set<String> overriddenInApplicationConf() throws IOException {
