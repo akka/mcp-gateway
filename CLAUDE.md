@@ -46,7 +46,7 @@ Check every PR against these, and say so explicitly when one does not apply.
 - This repo is public. Issues, PRs and comments must not contain customer names or details, or content quoted from private repos.
 
 **Verification**
-- CI does not run integration tests, so a green check is not proof. Run the affected `*IntegrationTest` classes locally with `mvn verify -Dit.test=<Class>` and say so in the PR.
+- CI runs the integration tests with `mvn verify`. While developing, run a single class with `mvn verify -Dit.test=<Class>`.
 - Run `mvn checkstyle:check`.
 
 ## Akka documentation

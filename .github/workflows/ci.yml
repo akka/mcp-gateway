@@ -7,6 +7,7 @@ on:
 jobs:
   build-and-test:
     runs-on: Akka-Default-Latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -26,10 +27,13 @@ jobs:
         run: mvn compile --batch-mode # also runs Checkstyle (bound to the validate phase)
 
       - name: Test
-        run: mvn test --batch-mode
+        run: mvn verify --batch-mode
 
       - name: Lint mcp-servers
         run: |
           mvn -f mcp-servers/akka-salesforce-mcp-server/pom.xml checkstyle:check --batch-mode
           mvn -f mcp-servers/okta-mcp-server/pom.xml checkstyle:check --batch-mode
           mvn -f mcp-servers/slack-mcp-server/pom.xml checkstyle:check --batch-mode
+
+      - name: Test slack-mcp-server
+        run: mvn -f mcp-servers/slack-mcp-server/pom.xml verify --batch-mode
