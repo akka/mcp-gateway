@@ -345,7 +345,17 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         // This check must come before the write guard: on cold-start the registry is empty,
         // so toolMeta would be absent and isWrite would default to true — producing a
         // misleading "write not permitted" error when the real issue is "not connected".
-        if (!client.isConnected(userEmail)) {
+        var connection = client.connection(userEmail);
+        if (connection == RemoteMcpClient.Connection.CHECK_FAILED) {
+            log.warn("tools/call: could not check whether {} is connected for user {}", client.getMcpName(), userEmail);
+            componentClient
+                    .forEventSourcedEntity(UUID.randomUUID().toString())
+                    .method(McpInteractionEntity::record)
+                    .invoke(new McpInteractionEntity.RecordCommand(
+                            userEmail, client.getMcpId(), toolName, Map.of("error", "connection-check-failed"), "resp"));
+            return toolError(id, "Could not check your " + client.getMcpName() + " connection. Please try again shortly.");
+        }
+        if (connection == RemoteMcpClient.Connection.NOT_CONNECTED) {
             String howtoTool = "howto_connect_" + client.getMcpId().replace("-", "_");
             String msg = client.getMcpName() + " is not connected. "
                     + "Call `" + howtoTool + "` for setup instructions, or visit the dashboard to connect.";

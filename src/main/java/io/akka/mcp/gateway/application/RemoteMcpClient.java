@@ -38,6 +38,14 @@ public interface RemoteMcpClient {
     default boolean isAvailable() { return true; }
 
     boolean isConnected(String userId);
+
+    /** What is known of a user's connection; a lookup that failed is never reported as not connected. */
+    enum Connection { CONNECTED, NOT_CONNECTED, CHECK_FAILED }
+
+    default Connection connection(String userId) {
+        return isConnected(userId) ? Connection.CONNECTED : Connection.NOT_CONNECTED;
+    }
+
     boolean canHandle(String toolName);
 
     List<ToolEntry> listTools(String userId) throws Exception;

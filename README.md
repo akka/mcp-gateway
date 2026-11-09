@@ -240,6 +240,8 @@ Group membership and app assignment establish that you are *allowed* to use a sy
 
 ### The Customer Hub
 
+Pasting a token is a stopgap until the hub supports OAuth ([akka/customer-hub#45](https://github.com/akka/customer-hub/issues/45)).
+
 - **Your token, your access.** The gateway checks a pasted token with the hub before keeping it and forwards it as `Authorization: Bearer`. The hub decides what that person may see on every call, on top of the gateway's Okta application, role and write checks. The check of a pasted token is only as strong as the hub's own authentication of its tool listing. The gateway cannot tell whose token a person pasted, so the hub attributes calls to the token's owner.
 - **Nothing kept.** The gateway stores the token to forward it, and keeps no arguments or results of these calls: its history shows who called which tool, when and whether it succeeded, and call bodies are never logged. Hub error text reaches the caller but is not kept.
 - **A refused token.** A tool call the hub answers with 401 disconnects that user, who connects again with a new token.

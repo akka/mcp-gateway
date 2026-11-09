@@ -67,8 +67,11 @@ public class CustomerHubEndpoint extends AbstractProtectedEndpoint {
     public HttpResponse status() {
         var session = requireSession();
         if (session == null) return redirectToLogin();
-        var connected = session.mayUseApp(client.getRequiredOktaAppId()) && client.isConnected(session.email());
-        return HttpResponses.ok(new HubStatus(connected));
+        var connection = session.mayUseApp(client.getRequiredOktaAppId())
+                ? client.connection(session.email())
+                : RemoteMcpClient.Connection.NOT_CONNECTED;
+        if (connection == RemoteMcpClient.Connection.CHECK_FAILED) return connectionCheckFailed(StatusCodes.SERVICE_UNAVAILABLE);
+        return HttpResponses.ok(new HubStatus(connection == RemoteMcpClient.Connection.CONNECTED));
     }
 
     @Post("/connect")
@@ -130,7 +133,9 @@ public class CustomerHubEndpoint extends AbstractProtectedEndpoint {
         if (session == null) return redirectToLogin();
         var unavailable = unavailableTo(session);
         if (unavailable.isPresent()) return unavailable.get();
-        if (!client.isConnected(session.email())) return testResultResponse(StatusCodes.OK, TestResult.fail("Not connected."));
+        var connection = client.connection(session.email());
+        if (connection == RemoteMcpClient.Connection.CHECK_FAILED) return connectionCheckFailed(StatusCodes.OK);
+        if (connection == RemoteMcpClient.Connection.NOT_CONNECTED) return testResultResponse(StatusCodes.OK, TestResult.fail("Not connected."));
         try {
             var tools = client.listTools(session.email());
             recordTools(tools);
@@ -139,6 +144,10 @@ public class CustomerHubEndpoint extends AbstractProtectedEndpoint {
             log.warn("Customer Hub connection test failed: {}", HubFailure.describe(e));
             return testResultResponse(StatusCodes.OK, resultFor(HubFailure.classify(e)));
         }
+    }
+
+    private static HttpResponse connectionCheckFailed(StatusCode status) {
+        return testResultResponse(status, TestResult.fail("Your connection could not be checked. Try again shortly."));
     }
 
     private HttpResponse noToolsForTheToken(UserSession session) {

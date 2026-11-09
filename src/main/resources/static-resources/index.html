@@ -692,7 +692,7 @@
             'groundcover':     function() { fetch('/groundcover/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGroundcoverStatus).catch(function() { renderError('gc-status'); }); },
             'hubspot':         function() { fetch('/hubspot/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderHubspotStatus).catch(function() { renderError('hubspot-status'); }); },
             'seamless':        function() { fetch('/seamless/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSeamlessStatus).catch(function() { renderError('seamless-status'); }); },
-            'customer-hub':    function() { fetch('/customer-hub/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderCustomerHubStatus).catch(function() { renderError('chub-status'); }); },
+            'customer-hub':    function() { fetch('/customer-hub/status', { cache: 'no-store' }).then(function(r) { if (!r.ok) throw new Error('status ' + r.status); return r.json(); }).then(renderCustomerHubStatus).catch(function() { renderError('chub-status'); }); },
             'slack':           function() { fetch('/slack/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSlackStatus).catch(function() { renderError('slack-status'); }); },
             'okta-admin':      function() { setDot('okta', 'connected'); }
         };

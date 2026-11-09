@@ -58,6 +58,16 @@ public class CustomerHubMcpClientTest {
     }
 
     @Test
+    public void connection_whenNotAvailable_isNotConnected_withoutAskingAnyEntity() {
+        assertThat(clientFor("", "", failingComponentClient()).connection(USER)).isEqualTo(RemoteMcpClient.Connection.NOT_CONNECTED);
+    }
+
+    @Test
+    public void connection_whenTheEntityCallFails_isACheckFailure_notNotConnected() {
+        assertThat(clientFor(HTTPS_URL, APP_ID, failingComponentClient()).connection(USER)).isEqualTo(RemoteMcpClient.Connection.CHECK_FAILED);
+    }
+
+    @Test
     public void callTool_whenTheTokenLookupFails_saysTheRequestFailed_withoutTheEntitysWords() {
         var result = clientFor(HTTPS_URL, APP_ID, failingComponentClient()).callTool(USER, "CustomerHub_get_request", Map.of());
 

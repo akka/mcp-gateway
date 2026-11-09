@@ -123,12 +123,17 @@ public class CustomerHubMcpClient implements RemoteMcpClient {
 
     @Override
     public boolean isConnected(String userId) {
-        if (!isAvailable()) return false;
+        return connection(userId) == Connection.CONNECTED;
+    }
+
+    @Override
+    public Connection connection(String userId) {
+        if (!isAvailable()) return Connection.NOT_CONNECTED;
         try {
-            return connectionStatus(userId).connected();
+            return connectionStatus(userId).connected() ? Connection.CONNECTED : Connection.NOT_CONNECTED;
         } catch (Exception e) {
             log.warn("Customer Hub connection check failed: {}", HubFailure.describe(e));
-            return false;
+            return Connection.CHECK_FAILED;
         }
     }
 
