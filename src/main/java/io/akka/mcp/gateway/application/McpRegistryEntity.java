@@ -8,6 +8,7 @@ import io.akka.mcp.gateway.domain.McpConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 @Component(id = "mcp-registry")
 public class McpRegistryEntity extends KeyValueEntity<McpRegistryEntity.State> {
@@ -22,6 +23,34 @@ public class McpRegistryEntity extends KeyValueEntity<McpRegistryEntity.State> {
             updated.removeIf(c -> c.mcpId().equals(config.mcpId()));
             updated.add(config);
             return new State(List.copyOf(updated));
+        }
+
+        /** Bounds what listings made with different credentials can add, because the cache is shared and read on every call. */
+        public static final int MAX_ADDED_TOOLS_PER_SYSTEM = 500;
+
+        public State withToolsAdded(McpConfig config) {
+            var known = findByMcpId(config.mcpId());
+            var tools = new ArrayList<>(known.map(McpConfig::tools).orElse(List.of()));
+            for (var offered : config.tools()) {
+                var at = IntStream.range(0, tools.size()).filter(i -> tools.get(i).name().equals(offered.name())).findFirst();
+                if (at.isPresent()) {
+                    tools.set(at.getAsInt(), keepingWrite(tools.get(at.getAsInt()), offered));
+                } else if (tools.size() < MAX_ADDED_TOOLS_PER_SYSTEM) {
+                    tools.add(offered);
+                }
+            }
+            var merged = new McpConfig(config.mcpId(), config.name(), List.copyOf(tools));
+            return known.isPresent() ? replacingInPlace(merged) : with(merged);
+        }
+
+        private State replacingInPlace(McpConfig config) {
+            return new State(configs.stream().map(c -> c.mcpId().equals(config.mcpId()) ? config : c).toList());
+        }
+
+        /** A tool once seen as a write stays one, so a listing that leaves out its hints cannot open the write gate. */
+        private static McpConfig.ToolMeta keepingWrite(McpConfig.ToolMeta known, McpConfig.ToolMeta offered) {
+            if (!known.isWrite() || offered.isWrite()) return offered;
+            return new McpConfig.ToolMeta(offered.name(), offered.description(), offered.inputSchema(), false, offered.hasBodyParam());
         }
 
         public Optional<McpConfig.ToolMeta> findTool(String toolName) {
@@ -49,6 +78,12 @@ public class McpRegistryEntity extends KeyValueEntity<McpRegistryEntity.State> {
 
     public Effect<Done> register(McpConfig config) {
         return effects().updateState(currentState().with(config)).thenReply(Done.getInstance());
+    }
+
+    public Effect<Done> registerAdding(McpConfig config) {
+        var next = currentState().withToolsAdded(config);
+        if (next.equals(currentState())) return effects().reply(Done.getInstance());
+        return effects().updateState(next).thenReply(Done.getInstance());
     }
 
     public ReadOnlyEffect<State> list() {

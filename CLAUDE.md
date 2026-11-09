@@ -32,7 +32,7 @@ Check every PR against these, and say so explicitly when one does not apply.
 - Simplicity: no abstraction for a hypothetical future need.
 
 **Tool list invariant**
-- `tools/list` returns every tool, whatever the caller's role, connection state or the write policy, because MCP clients cache it at connect time and ignore `list_changed`. Only Okta app assignments may shape it.
+- `tools/list` returns every tool, whatever the caller's role, connection state or the write policy, because MCP clients cache it at connect time and ignore `list_changed`. Only Okta app assignments, and a token connector the operator has not set up on this gateway, may shape it.
 - A change that can alter apps on token issue or refresh, including a failed Okta lookup, can shrink the list for the rest of a client session. It needs a test that `tools/list` stays complete.
 - Group and policy changes must be enforced in `tools/call` and never in `tools/list`.
 

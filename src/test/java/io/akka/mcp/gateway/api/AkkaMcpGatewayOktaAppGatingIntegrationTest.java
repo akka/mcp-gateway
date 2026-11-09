@@ -162,4 +162,21 @@ public class AkkaMcpGatewayOktaAppGatingIntegrationTest extends TestKitSupport {
             GatewayFixtures.enableWritesOn(componentClient, before);
         }
     }
+
+    private List<String> systemsOnTheToolsPage(List<UserSession.App> apps) throws Exception {
+        var session = GatewayFixtures.browserSession(componentClient, "tools-page@lightbend.com", List.of(), apps);
+        var response = httpClient.GET("/mcp/tools/data").addHeader("Cookie", "SESSION=" + session).invoke();
+        var mcpIds = new ArrayList<String>();
+        JsonSupport.getObjectMapper().readTree(response.body().utf8String()).path("configs")
+                .forEach(config -> mcpIds.add(config.path("mcpId").asText()));
+        return mcpIds;
+    }
+
+    @Test
+    public void theToolsPage_leavesOutABuiltInSystemForAUserWithoutTheApp_andShowsItToAUserWithIt() throws Exception {
+        seedCachedOktaTool();
+
+        assertThat(systemsOnTheToolsPage(List.of())).doesNotContain(MCP_ID);
+        assertThat(systemsOnTheToolsPage(List.of(new UserSession.App(OKTA_APP_ID, "Okta MCP Admin")))).contains(MCP_ID);
+    }
 }

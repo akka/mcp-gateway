@@ -20,7 +20,32 @@ public interface RemoteMcpClient {
      */
     default boolean isLocalGuidance() { return false; }
 
+    /**
+     * Whether the gateway may keep the arguments and result text of this client's tool calls in its
+     * interaction history. A client whose data must not be stored by the gateway returns false; the
+     * history then holds only who called which tool and whether it succeeded.
+     */
+    default boolean recordsToolContent() { return true; }
+
+    /**
+     * Whether the tools the upstream lists can differ from one user's credentials to another's. The
+     * gateway then only adds to its shared tool cache, so a user who may see fewer tools cannot shrink
+     * the list, or lose the read/write classification, for everyone else.
+     */
+    default boolean toolListDependsOnCaller() { return false; }
+
+    /** Whether this client is set up on this gateway at all. An unavailable client's tools are not listed. */
+    default boolean isAvailable() { return true; }
+
     boolean isConnected(String userId);
+
+    /** What is known of a user's connection; a lookup that failed is never reported as not connected. */
+    enum Connection { CONNECTED, NOT_CONNECTED, CHECK_FAILED }
+
+    default Connection connection(String userId) {
+        return isConnected(userId) ? Connection.CONNECTED : Connection.NOT_CONNECTED;
+    }
+
     boolean canHandle(String toolName);
 
     List<ToolEntry> listTools(String userId) throws Exception;

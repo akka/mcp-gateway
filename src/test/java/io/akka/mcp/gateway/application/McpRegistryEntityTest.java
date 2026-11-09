@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -169,5 +170,119 @@ public class McpRegistryEntityTest {
 
         assertThat(result.getReply()).isPresent();
         assertThat(result.getReply().get().name()).isEqualTo("zoho_tool");
+    }
+
+    @Test
+    public void registerAdding_keepsKnownTools_addsNewOnes_andLetsTheNewestDefinitionWin() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+        testKit.method(McpRegistryEntity::register).invoke(configWithTools("caller-dependent"));
+
+        testKit.method(McpRegistryEntity::registerAdding).invoke(new McpConfig("caller-dependent", "caller-dependent-name", List.of(
+                new McpConfig.ToolMeta("tool_a", "newer desc a", null, true, false),
+                new McpConfig.ToolMeta("tool_c", "desc c", null, true, false))));
+
+        var tools = testKit.getState().findByMcpId("caller-dependent").orElseThrow().tools();
+        assertThat(tools).extracting(McpConfig.ToolMeta::name).containsExactlyInAnyOrder("tool_a", "tool_b", "tool_c");
+        assertThat(tools).filteredOn(t -> t.name().equals("tool_a")).singleElement()
+                .satisfies(t -> assertThat(t.description()).isEqualTo("newer desc a"));
+    }
+
+    @Test
+    public void registerAdding_withASmallerList_neverShrinksTheRegistry() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+        testKit.method(McpRegistryEntity::register).invoke(configWithTools("caller-dependent"));
+
+        testKit.method(McpRegistryEntity::registerAdding).invoke(new McpConfig("caller-dependent", "caller-dependent-name", List.of(
+                new McpConfig.ToolMeta("tool_a", "desc a", null, true, false))));
+
+        assertThat(testKit.getState().findByMcpId("caller-dependent").orElseThrow().tools())
+                .extracting(McpConfig.ToolMeta::name).containsExactlyInAnyOrder("tool_a", "tool_b");
+    }
+
+    @Test
+    public void registerAdding_toAnUnknownMcp_registersIt() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+
+        testKit.method(McpRegistryEntity::registerAdding).invoke(configWithTools("caller-dependent"));
+
+        assertThat(testKit.getState().findByMcpId("caller-dependent")).isPresent();
+    }
+
+    @Test
+    public void registerAdding_aToolSeenAsAWrite_staysAWriteWhenALaterListingClaimsItIsReadOnly() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+        testKit.method(McpRegistryEntity::register).invoke(configWithTools("caller-dependent"));
+
+        testKit.method(McpRegistryEntity::registerAdding).invoke(new McpConfig("caller-dependent", "caller-dependent-name", List.of(
+                new McpConfig.ToolMeta("tool_b", "desc b", null, true, false))));
+
+        assertThat(testKit.getState().findTool("tool_b")).get().satisfies(tool -> assertThat(tool.isWrite()).isTrue());
+    }
+
+    @Test
+    public void registerAdding_aToolSeenAsAReadBecomesAWriteWhenALaterListingSaysSo() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+        testKit.method(McpRegistryEntity::register).invoke(configWithTools("caller-dependent"));
+
+        testKit.method(McpRegistryEntity::registerAdding).invoke(new McpConfig("caller-dependent", "caller-dependent-name", List.of(
+                new McpConfig.ToolMeta("tool_a", "desc a", null, false, false))));
+
+        assertThat(testKit.getState().findTool("tool_a")).get().satisfies(tool -> assertThat(tool.isWrite()).isTrue());
+    }
+
+    @Test
+    public void registerAdding_withNothingNew_leavesTheStateUntouched() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+        testKit.method(McpRegistryEntity::register).invoke(configWithTools("caller-dependent"));
+
+        var result = testKit.method(McpRegistryEntity::registerAdding).invoke(configWithTools("caller-dependent"));
+
+        assertThat(result.isReply()).isTrue();
+        assertThat(result.stateWasUpdated()).isFalse();
+    }
+
+    @Test
+    public void registerAdding_aNewTool_keepsTheOrderOfTheConfigs() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+        testKit.method(McpRegistryEntity::register).invoke(configWithTools("caller-dependent"));
+        testKit.method(McpRegistryEntity::register).invoke(configWithTools("other"));
+
+        testKit.method(McpRegistryEntity::registerAdding).invoke(new McpConfig("caller-dependent", "caller-dependent-name", List.of(
+                new McpConfig.ToolMeta("tool_c", "desc c", null, true, false))));
+
+        assertThat(testKit.getState().configs()).extracting(McpConfig::mcpId).containsExactly("caller-dependent", "other");
+        assertThat(testKit.getState().findByMcpId("caller-dependent").orElseThrow().tools())
+                .extracting(McpConfig.ToolMeta::name).containsExactlyInAnyOrder("tool_a", "tool_b", "tool_c");
+    }
+
+    @Test
+    public void registerAdding_aStickyWrite_takesTheNewestDescription() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+        testKit.method(McpRegistryEntity::register).invoke(configWithTools("caller-dependent"));
+
+        testKit.method(McpRegistryEntity::registerAdding).invoke(new McpConfig("caller-dependent", "caller-dependent-name", List.of(
+                new McpConfig.ToolMeta("tool_b", "newer desc b", null, true, false))));
+
+        assertThat(testKit.getState().findTool("tool_b")).get().satisfies(tool -> {
+            assertThat(tool.isWrite()).isTrue();
+            assertThat(tool.description()).isEqualTo("newer desc b");
+        });
+    }
+
+    @Test
+    public void registerAdding_stopsAddingNewToolsAtTheCap_butStillUpdatesKnownOnes() {
+        var testKit = KeyValueEntityTestKit.of(McpRegistryEntity.ENTITY_ID, McpRegistryEntity::new);
+        var many = IntStream.range(0, McpRegistryEntity.State.MAX_ADDED_TOOLS_PER_SYSTEM + 10)
+                .mapToObj(i -> new McpConfig.ToolMeta("tool_" + i, "desc", null, true, false)).toList();
+
+        testKit.method(McpRegistryEntity::registerAdding).invoke(new McpConfig("caller-dependent", "name", many));
+        testKit.method(McpRegistryEntity::registerAdding).invoke(new McpConfig("caller-dependent", "name", List.of(
+                new McpConfig.ToolMeta("tool_0", "newer", null, true, false),
+                new McpConfig.ToolMeta("one_more", "desc", null, true, false))));
+
+        var tools = testKit.getState().findByMcpId("caller-dependent").orElseThrow().tools();
+        assertThat(tools).hasSize(McpRegistryEntity.State.MAX_ADDED_TOOLS_PER_SYSTEM);
+        assertThat(tools).extracting(McpConfig.ToolMeta::name).doesNotContain("one_more");
+        assertThat(tools).filteredOn(t -> t.name().equals("tool_0")).singleElement().satisfies(t -> assertThat(t.description()).isEqualTo("newer"));
     }
 }

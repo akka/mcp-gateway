@@ -12,7 +12,7 @@ Instead of setting up and maintaining a separate connection for every system, yo
 
 - **One connection instead of many.** Add the gateway once and every connected system becomes available to your assistant.
 - **You sign in as yourself.** Access goes through your Okta account, so the assistant only ever sees what you are already allowed to see.
-- **Nothing to install or configure.** No API keys to copy around, no credentials stored on your laptop.
+- **Nothing to install or configure.** No API keys to copy around, no credentials stored on your laptop (a token connector is the exception: you paste a token the system issues to you).
 - **Everything is recorded.** Each action an assistant takes through the gateway is logged, so there is always a clear record of what was accessed and when.
 
 ## Getting started
@@ -39,7 +39,7 @@ Your assistant now has access to the connected systems. Simply ask for what you 
 
 ## Connecting a system
 
-Some systems need to be linked to your account before they can be used. Open the gateway in your browser, sign in, and you will see a dashboard listing every available system along with its current status. Choose **Connect** next to any system you want to use, sign in to that system once, and it stays connected from then on.
+Some systems need to be linked to your account before they can be used. Open the gateway in your browser, sign in, and you will see a dashboard listing every available system along with its current status. Choose **Connect** next to any system you want to use, sign in to that system once (for a token connector, paste a token instead), and it stays connected from then on.
 
 ## Supported systems
 
@@ -52,7 +52,7 @@ Access control is also configured through the environment — none of these have
 - `OKTA_GROUP_READER`, `OKTA_GROUP_WRITER`, `OKTA_GROUP_ADMIN`, `OKTA_GROUP_ESCALATER` — the Okta group names that grant each gateway role (see [Access and permissions](#access-and-permissions)). A role with no group set is granted to nobody.
 - `MCP_OAUTH_REDIRECT_HOST_ALLOWLIST` — comma-separated hostnames allowed for `https://` `redirect_uris` when an MCP client dynamically registers itself. Defaults to `claude.ai,claude.com`, so Claude's hosted clients work out of the box; setting it replaces the default (list every host you want, including those two if you still need them). Loopback redirect URIs (`127.0.0.1`, `localhost`, `[::1]`) are always allowed, per RFC 8252. Set it to an empty value to reject every https redirect host, so only loopback clients can register.
 
-Each system is also gated by an Okta application, identified by its app instance id in `<SYSTEM>_OKTA_APP_ID` (listed per system below). Leaving one unset disables app-gating for that system (it appears accessible to everyone who can otherwise reach it).
+Each system is also gated by an Okta application, identified by its app instance id in `<SYSTEM>_OKTA_APP_ID` (listed per system below). Leaving one unset disables app-gating for that system (it appears accessible to everyone who can otherwise reach it), except for a token connector, which stays off without it.
 
 Optional support-contact settings surface in the "request an integration" help text: `SUPPORT_EMAIL` and `SUPPORT_SLACK_CHANNEL`. When unset, users are pointed at "your gateway administrator" generically.
 
@@ -161,6 +161,9 @@ Saving a Slack draft (`slack_draft_message`) uses Slack's hosted MCP server, so 
 - `SEAMLESS_MCP_URL` *(optional — defaults to Seamless's hosted server)*
 - `SEAMLESS_OKTA_APP_ID`
 
+**Token connectors**: any MCP server whose users paste a token it issues to them instead of signing in. The operator defines them in `TOKEN_MCPS`; see [Token connectors](#token-connectors).
+- `TOKEN_MCPS` *(a JSON list, one entry per connector; defaults to none)*
+
 The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_MCP_URL` and `OKTA_ADMIN_OKTA_APP_ID`.
 
 `OKTA_JWKS_URI` is optional and overrides where Okta sign-in keys are fetched from.
@@ -169,7 +172,7 @@ The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_M
 
 ## Seeing what happened
 
-The gateway keeps a full history of the actions taken on your behalf. From the dashboard you can review which systems were used, what was requested, and when. If something looks wrong, you can flag it there.
+The gateway keeps a full history of the actions taken on your behalf. From the dashboard you can review which systems were used, what was requested, and when. If something looks wrong, you can flag it there. The exception to "what was requested" is a token connector that does not keep call content (the default): its entries show the tool and the time but not the arguments or the results.
 
 ## Access and permissions
 
@@ -193,7 +196,7 @@ Your groups are re-read from Okta every time your assistant renews its connectio
 
 ### Applications decide which systems you see
 
-Every system is tied to an Okta application. Being assigned that application is what puts the system in the **accessible** list on your dashboard; without it the system appears as unavailable and you should ask IT to assign it to you.
+Every system is tied to an Okta application (a token connector to the one in its `okta-app-id`), and the tools page lists only the systems whose application you have. Being assigned that application is what puts the system in the **accessible** list on your dashboard; without it the system appears as unavailable and you should ask IT to assign it to you.
 
 | System | Okta application |
 |---|---|
@@ -217,21 +220,52 @@ Being assigned the Google application enables the whole Google Workspace card at
 
 Being in the writer group is necessary but not sufficient. A system must also have writes enabled; every other system is read-only for everyone, writers included. A write tool on a read-only system is refused with a message that says so, but it still appears in the tool list (see [Every tool is always listed](#every-tool-is-always-listed)). The dashboard marks each system **Read-only** or **Read** and **Write** for you specifically, so a reader never sees a **Write** badge.
 
-Admins choose the enabled systems on the **Write access** page (admin menu on the dashboard). A change is applied by the gateway immediately: disabling a system stops writes on it for everyone, and enabling one lets users in the writer group use it straight away. It is recorded in the Interactions log as a `policy-change` entry with who changed what, so it can be reviewed and flagged like any other entry. Nothing is enabled until an admin saves a selection, so a new deployment is read-only everywhere. If the saved selection cannot be read, the gateway refuses all writes.
+Admins choose the enabled systems on the **Write access** page (admin menu on the dashboard). A change is applied by the gateway immediately: disabling a system stops writes on it for everyone, and enabling one lets users in the writer group use it straight away. It is recorded in the Interactions log as a `policy-change` entry with who changed what, so it can be reviewed and flagged like any other entry. Nothing is enabled until an admin saves a selection, so a new deployment is read-only everywhere. Writes enabled on a system that is configured but off are kept when the page is saved, though the page does not show that system, and they apply again when it is switched on. If the saved selection cannot be read, the gateway refuses all writes.
 
 Enabling a system is a deliberate decision: review the OAuth scopes users grant and the tools the downstream server exposes first. Every system asks each user for the same permissions whatever their role, so enabling one needs no reconnect, and the write gate is what stops a reader writing. Turning writes off does not revoke tokens people already hold, it only stops the gateway using them.
 
 ### Every tool is always listed
 
-The tool list does not depend on your role, on which systems have writes enabled, or, once anyone has connected a system, on whether you have. A tool you cannot use yet is still listed, and calling it returns an error saying what is wrong: not connected, read-only through the gateway, or write access not permitted.
+The tool list does not depend on your role, on which systems have writes enabled, or, once anyone has connected a system, on whether you have. A tool you cannot use yet is still listed, and calling it returns an error saying what is wrong: not connected, read-only through the gateway, or write access not permitted (or, for a tool your assistant listed before the operator turned the system off, not set up on this gateway).
 
-This is deliberate. Assistants fetch the tool list once, when they connect, and the main ones ignore "tool list changed" notifications, so a list that varied would stay stale until the assistant was restarted. The one thing that shapes it is your Okta application assignments, read at sign-in and on each renewal; a renewal that cannot reach Okta leaves them as they were. For a system nobody has connected yet there is nothing to list, so its tools appear after the first connection (restart the assistant, or have it call `howto_refresh_tools`).
+This is deliberate. Assistants fetch the tool list once, when they connect, and the main ones ignore "tool list changed" notifications, so a list that varied would stay stale until the assistant was restarted. What shapes it is your Okta application assignments, read at sign-in and on each renewal (a renewal that cannot reach Okta leaves them as they were), and whether the operator has set up a token connector on this gateway. For a system nobody has connected yet there is nothing to list, so its tools appear after the first connection (restart the assistant, or have it call `howto_refresh_tools`).
 
 `AkkaMcpGatewayWriteGateIntegrationTest` pins this behaviour, and `OktaAppsRefreshIntegrationTest` pins it across a renewal that cannot reach Okta.
 
 ### Connecting is still per-person
 
-Group membership and app assignment establish that you are *allowed* to use a system. They do not connect it. Each user still signs in to each system once through the dashboard, and the gateway acts strictly as that person — never with a shared or elevated account. So a colleague who can reach Salesforce sees only the Salesforce records their own Salesforce login permits.
+Group membership and app assignment establish that you are *allowed* to use a system. They do not connect it. Each user still signs in to each system once through the dashboard, and the gateway acts strictly as that person, never with a shared or elevated account. So a colleague who can reach Salesforce sees only the Salesforce records their own Salesforce login permits. A token connector connects with a token you paste instead of a sign-in, and it is still your own: the system that issued it decides what that token may see.
+
+### Token connectors
+
+A token connector fronts an MCP server whose users each have a token the server issues to them. Each connector is one entry in `TOKEN_MCPS`, a JSON list. It holds operator-specific URLs and Okta application ids, so set it from a secret:
+
+```json
+[{"id": "billing", "name": "Billing", "tool-prefix": "Billing_",
+  "mcp-url": "https://billing.example.com", "okta-app-id": "0oa...",
+  "connect-hint": "Open your Billing profile and create an access key."}]
+```
+
+| Setting | Meaning |
+|---|---|
+| `id` | Up to 40 lowercase letters, digits and hyphens, starting with a letter; not `proxy`, `howto` or starting with `google-workspace`. Names the connector, its dashboard card and its how-to tool (`howto_connect_<id>` with hyphens turned into underscores). |
+| `name` | Shown to users: 1 to 60 characters, no control characters, not starting with `Google Workspace`, and not the name of another connector or a built-in system (compared ignoring case). |
+| `tool-prefix` | Up to 31 letters and digits ending in `_`, starting with a letter and not with `howto`. The gateway lists the server's tools under it. It cannot repeat another connector's prefix, and a prefix that a built-in system already handles is refused. A prefix that only starts a built-in's longer prefix is accepted, but a tool name that a built-in system answers to is never listed by a connector. |
+| `mcp-url` | The server's base URL, to which the gateway adds `/mcp` (trailing slashes are dropped): `https`, or `http` for loopback only, with no credentials, query or fragment. Blank leaves the connector off, as does anything else that does not fit. |
+| `okta-app-id` | The Okta application that gates access. Blank leaves the connector off. |
+| `record-tool-content` | Optional. `true` keeps tool arguments and results in the history. Defaults to `false`, so the history shows only who called which tool, when and whether it succeeded. |
+| `connect-hint` | Optional, 1 to 300 characters. One line telling users how to get a token; without it they are told to get an access token from the service. Every signed-in user can read it, so keep it free of anything sensitive. |
+
+`id`, `name`, `tool-prefix`, `mcp-url` and `okta-app-id` are required keys (the last two may be blank); any other key is refused.
+
+Routes, all for a signed-in user (without a session `status` and `test` redirect to sign in, and the others answer `401`): `GET /token-mcp/connectors` lists the connectors that are set up; `GET /token-mcp/{id}/status`, `POST /token-mcp/{id}/connect` (a JSON body with `token`), `POST /token-mcp/{id}/disconnect` and `GET /token-mcp/{id}/test` act on one. An unknown id is `404`. `connect` answers `400` for a token that is malformed, refused or lists no tools, `502` when the server cannot be reached or fails, `503` when the connector is off or the token cannot be saved, and `403` to a user without its Okta application or from another origin; `test` answers `503` and `403` likewise. `status` answers `connected: false` for a user without the application and `503` when the connection cannot be checked, and `disconnect` succeeds for any known id. Connect and test are not rate limited.
+
+- **Your token, your access.** The gateway checks a pasted token with the server before keeping it (printable ASCII with no spaces, up to 4,096 characters, and a leading `Bearer ` is dropped) and forwards it as `Authorization: Bearer`. The server decides what that person may see on every call, on top of the gateway's Okta application, role and write checks. The gateway cannot tell whose token a person pasted, so the server attributes calls to the token's owner.
+- **A refused token.** Only a `401` from the server is read as a refused token: on a tool call it disconnects that user, who connects again with a new token, and on connect it answers `400`. Any other failure, a `403` included, reads as the server being unavailable or the token not being checkable.
+- **Invalid entries.** An entry that is not valid, or whose id, name or tool prefix is already used by another connector or a built-in system, is skipped and logged. A `TOKEN_MCPS` value that is not valid JSON, has text after the list or repeats a key in an entry sets up no connector at all.
+- **Browser requests.** Connect and disconnect refuse a browser request whose `Origin` is not the gateway's own address (`MCP_BASE_URL`).
+- **One tool list.** A server can list different tools for different tokens, so the gateway only adds to its cached tool list for a connector (up to 500 tools) and lists that whole cache to everyone with its Okta application. The cache grows when someone connects, tests the connection, or lists tools while connected and nothing is cached; a tool the server removes stays listed. A tool is left out if its name with the connector's prefix is not 1 to 128 letters, digits, `_`, `.` or `-`, or if its definition is over 8,000 characters, and a listing is cut at 500 tools. A tool that does not say it only reads is treated as a write, and a tool once seen as a write stays one. Do not front a server whose tool listings a user can influence or that carries per-user values, because the cache is shared.
+- **Changing a connector.** The cache and the stored tokens are kept per `id`. To point a connector at a different server or change its `tool-prefix`, give it a new `id` and a new `tool-prefix`, so that tokens issued by the old server are never sent to the new one and the old cached tools never match it. Tokens are kept in the connection entity until the user disconnects or the server refuses them; removing a connector from `TOKEN_MCPS` leaves them stored, so revoke them at the server.
 
 ## Development
 
