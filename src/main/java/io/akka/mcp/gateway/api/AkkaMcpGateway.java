@@ -16,6 +16,7 @@ import io.akka.mcp.gateway.application.McpClients;
 import io.akka.mcp.gateway.application.McpInteractionEntity;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
+import io.akka.mcp.gateway.application.ToolRegistry;
 import io.akka.mcp.gateway.domain.McpConfig;
 import io.akka.mcp.gateway.domain.UserSession;
 import io.akka.mcp.gateway.domain.WriteAccess;
@@ -51,6 +52,11 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
     // bounded by this, so one slow/hung upstream can't stall the aggregate list (or push the
     // whole response past the MCP client's own request timeout, which surfaces as "no tools").
     private static final long LIVE_FETCH_TIMEOUT_SECONDS = 20;
+    static final int MAX_RECORDED_OUTPUT = 4000;
+    static final String TRUNCATED_MARKER = "… [truncated]";
+    static final String NOT_KEPT = "[not kept]";
+    private static final Map<String, String> ARGUMENTS_NOT_KEPT = Map.of("arguments", NOT_KEPT);
+    static final String GENERIC_FAILURE_TEXT = "The call failed.";
     // Virtual threads: cheap, daemon by default, no pool sizing — a natural fit for the blocking
     // network I/O of the upstream tool fetches.
     private static final ExecutorService TOOLS_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
@@ -81,7 +87,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         var accessible = new ArrayList<McpAccessEntry>();
         var inaccessible = new ArrayList<McpAccessEntry>();
         for (var client : clients) {
-            if (client.isLocalGuidance()) continue;
+            if (client.isLocalGuidance() || !client.isAvailable()) continue;
             var hasAccess = appAssigned(session, client);
             var entry = new McpAccessEntry(client.getMcpId(), client.getMcpName(),
                     hasAccess && writeAccess.permits(client.getMcpId(), session));
@@ -107,13 +113,12 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         if (session == null) return unauthorizedForMcp();
 
         String body = rawBody.getData().utf8String();
-        log.debug(">>> POST /proxy body={}", body);
 
         Map<String, Object> request;
         try {
             request = MAPPER.readValue(body, Map.class);
         } catch (Exception e) {
-            log.warn("JSON parse error: {}", e.getMessage());
+            log.warn("JSON parse error: {}", e.getClass().getSimpleName());
             return jsonResponse(errorJson(null, -32700, "Parse error"));
         }
 
@@ -168,7 +173,8 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
      * {@code notifications/tools/list_changed}, so anything that can change mid-session must never decide
      * what is listed: a connect, a role change or an admin enabling writes would otherwise leave clients
      * with a stale list until they restart. Calls that cannot be made are refused with an explanation
-     * instead (see {@link #handleToolsCall}). A service nobody has connected yet has nothing cached to list.
+     * instead (see {@link #handleToolsCall}). A service nobody has connected yet has nothing cached to list,
+     * and one the operator has not set up on this gateway is left out.
      */
     private String handleToolsList(Long id, UserSession session) {
         String userId = session.email();
@@ -192,12 +198,18 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         for (var client : clients) {
             if (client.isLocalGuidance()) continue;
             var clientName = client.getClass().getSimpleName();
+            if (!client.isAvailable()) {
+                log.info("MCP tools/list: {} is not set up on this gateway: hiding tools", clientName);
+                continue;
+            }
             if (!appAssigned(session, client)) {
                 log.info("MCP tools/list: {} app not assigned to user {} — hiding tools", clientName, userId);
                 continue;
             }
             try {
-                if (client.isConnected(userId)) {
+                if (client.toolListDependsOnCaller() && addCachedTools(client.getMcpId(), allTools)) {
+                    log.info("MCP tools/list: {} lists the same tools to everyone, using registry cache", clientName);
+                } else if (client.isConnected(userId)) {
                     log.info("MCP tools/list: fetching live tools from {}", clientName);
                     pending.put(client, TOOLS_EXECUTOR.submit(() -> client.listTools(userId)));
                 } else {
@@ -205,7 +217,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                     addCachedTools(client.getMcpId(), allTools);
                 }
             } catch (Exception e) {
-                log.error("MCP tools/list: could not start fetch for {}: {} — using cache", clientName, e.getMessage(), e);
+                logFailure(client, "MCP tools/list: could not start fetch for " + clientName + ", using cache", e);
                 addCachedTools(client.getMcpId(), allTools);
             }
         }
@@ -218,8 +230,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                 entries = entry.getValue().get(LIVE_FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             } catch (Exception e) {
                 entry.getValue().cancel(true);
-                log.error("MCP tools/list: live fetch failed/timed out for {}: {} — falling back to cache",
-                        clientName, e.getMessage());
+                log.error("MCP tools/list: live fetch failed or timed out for {}, falling back to cache: {}", clientName, loggable(client, e));
                 addCachedTools(client.getMcpId(), allTools);
                 continue;
             }
@@ -233,13 +244,13 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             log.info("MCP tools/list: got {} live tools from {}", entries.size(), clientName);
             var toolMetas = entries.stream().map(RemoteMcpClient.ToolEntry::meta).toList();
             try {
-                componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
-                        .method(McpRegistryEntity::register)
-                        .invoke(new McpConfig(client.getMcpId(), client.getMcpName(), toolMetas));
+                ToolRegistry.record(componentClient, client, toolMetas);
             } catch (Exception e) {
                 log.error("MCP tools/list: failed to cache tools for {}: {}", clientName, e.getMessage());
             }
-            entries.forEach(e -> allTools.add(e.toolSpec()));
+            if (!client.toolListDependsOnCaller() || !addCachedTools(client.getMcpId(), allTools)) {
+                entries.forEach(e -> allTools.add(e.toolSpec()));
+            }
         }
 
         log.info("MCP tools/list: returning {} tools total", allTools.size());
@@ -259,18 +270,21 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         }
     }
 
-    /** Best-effort: append a client's last-known cached tools. Never throws. */
-    private void addCachedTools(String mcpId, List<Map<String, Object>> allTools) {
+    /** Best-effort: append a client's last-known cached tools, and say whether there were any. Never throws. */
+    private boolean addCachedTools(String mcpId, List<Map<String, Object>> allTools) {
         try {
             var cached = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                     .method(McpRegistryEntity::findByMcpId)
-                    .invoke(mcpId);
+                    .invoke(mcpId)
+                    .filter(config -> !config.tools().isEmpty());
             cached.ifPresent(cfg -> {
                 log.info("MCP tools/list: adding {} cached tools for {}", cfg.tools().size(), mcpId);
                 cfg.tools().forEach(meta -> allTools.add(meta.toToolSpec()));
             });
+            return cached.isPresent();
         } catch (Exception e) {
             log.error("MCP tools/list: cache lookup failed for {}: {}", mcpId, e.getMessage());
+            return false;
         }
     }
 
@@ -318,6 +332,15 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             return errorJson(id, -32601, "No MCP client can handle tool: " + toolName);
         }
 
+        if (!client.isAvailable()) {
+            componentClient
+                    .forEventSourcedEntity(UUID.randomUUID().toString())
+                    .method(McpInteractionEntity::record)
+                    .invoke(new McpInteractionEntity.RecordCommand(
+                            userEmail, client.getMcpId(), toolName, Map.of("reason", "not-set-up"), "rejected"));
+            return toolError(id, client.getMcpName() + " is not set up on this gateway.");
+        }
+
         // Return a friendly error when the client exists but the user hasn't connected it.
         // This check must come before the write guard: on cold-start the registry is empty,
         // so toolMeta would be absent and isWrite would default to true — producing a
@@ -332,10 +355,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                     .method(McpInteractionEntity::record)
                     .invoke(new McpInteractionEntity.RecordCommand(
                             userEmail, client.getMcpId(), toolName, Map.of("error", "not-connected"), "resp"));
-            Map<String, Object> resp = new LinkedHashMap<>();
-            resp.put("content", List.of(Map.of("type", "text", "text", msg)));
-            resp.put("isError", true);
-            return responseJson(id, resp);
+            return toolError(id, msg);
         }
 
         var toolMeta = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
@@ -368,10 +388,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                     : "`" + toolName + "` has not been classified as read or write yet, so the gateway "
                             + "treats it as a write, and " + client.getMcpName() + " is read-only through the gateway. "
                             + "Refresh your tool list (see `howto_refresh_tools`) and try again.";
-            Map<String, Object> resp = new LinkedHashMap<>();
-            resp.put("content", List.of(Map.of("type", "text", "text", message)));
-            resp.put("isError", true);
-            return responseJson(id, resp);
+            return toolError(id, message);
         }
 
         boolean isRead = !isWrite;
@@ -396,42 +413,69 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                 .forEventSourcedEntity(UUID.randomUUID().toString())
                 .method(McpInteractionEntity::record)
                 .invoke(new McpInteractionEntity.RecordCommand(
-                        userEmail, client.getMcpId(), toolName, Map.of("arguments", toJson(arguments)), "req"));
+                        userEmail, client.getMcpId(), toolName, recordedArguments(client, arguments), "req"));
 
         try {
             var result = client.callTool(userEmail, toolName, arguments);
-            String truncatedOutput = result.text() != null && result.text().length() > 4000
-                    ? result.text().substring(0, 4000) + "… [truncated]"
-                    : result.text();
             componentClient
                     .forEventSourcedEntity(UUID.randomUUID().toString())
                     .method(McpInteractionEntity::record)
                     .invoke(new McpInteractionEntity.RecordCommand(
-                            userEmail, client.getMcpId(), toolName, Map.of("isError", String.valueOf(result.isError())), "resp", truncatedOutput));
+                            userEmail, client.getMcpId(), toolName, Map.of("isError", String.valueOf(result.isError())), "resp",
+                            recordedOutput(client, result.text())));
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("content", List.of(Map.of("type", "text", "text", result.text())));
             resp.put("isError", result.isError());
             return responseJson(id, resp);
         } catch (Exception e) {
-            log.error("tools/call failed: {}", e.getMessage(), e);
+            logFailure(client, "tools/call failed", e);
             componentClient
                     .forEventSourcedEntity(UUID.randomUUID().toString())
                     .method(McpInteractionEntity::record)
                     .invoke(new McpInteractionEntity.RecordCommand(
                             userEmail, client.getMcpId(), toolName,
-                            Map.of("error", e.getMessage() != null ? e.getMessage() : "unknown"), "resp"));
-            Map<String, Object> resp = new LinkedHashMap<>();
-            resp.put("content", List.of(Map.of("type", "text", "text",
-                    e.getMessage() != null ? e.getMessage() : "Unknown error")));
-            resp.put("isError", true);
-            return responseJson(id, resp);
+                            Map.of("error", recordedError(client, e)), "resp"));
+            return toolError(id, failureText(client, e));
         }
+    }
+
+    static Map<String, String> recordedArguments(RemoteMcpClient client, Map<String, Object> arguments) {
+        return client.recordsToolContent() ? Map.of("arguments", toJson(arguments)) : ARGUMENTS_NOT_KEPT;
+    }
+
+    static String recordedOutput(RemoteMcpClient client, String text) {
+        if (!client.recordsToolContent()) return NOT_KEPT;
+        if (text == null) return null;
+        return text.length() > MAX_RECORDED_OUTPUT ? text.substring(0, MAX_RECORDED_OUTPUT) + TRUNCATED_MARKER : text;
+    }
+
+    /** What may be written to the log about a failure: nothing the upstream said, for a client that keeps no content. */
+    static String loggable(RemoteMcpClient client, Exception e) {
+        if (!client.recordsToolContent()) return e.getClass().getSimpleName();
+        return e.getMessage();
+    }
+
+    private static void logFailure(RemoteMcpClient client, String what, Exception e) {
+        if (client.recordsToolContent()) {
+            log.error("{}: {}", what, e.getMessage(), e);
+        } else {
+            log.error("{}: {}", what, loggable(client, e));
+        }
+    }
+
+    static String failureText(RemoteMcpClient client, Exception e) {
+        if (!client.recordsToolContent()) return GENERIC_FAILURE_TEXT;
+        return e.getMessage() != null ? e.getMessage() : "Unknown error";
+    }
+
+    static String recordedError(RemoteMcpClient client, Exception e) {
+        if (!client.recordsToolContent()) return loggable(client, e);
+        return e.getMessage() != null ? e.getMessage() : "unknown";
     }
 
     /** True if the client has no required Okta app, or the session's user is assigned it. */
     private boolean appAssigned(UserSession session, RemoteMcpClient client) {
-        var requiredAppId = client.getRequiredOktaAppId();
-        return requiredAppId.isBlank() || session.hasApp(requiredAppId);
+        return session.mayUseApp(client.getRequiredOktaAppId());
     }
 
     // -- static helpers --
@@ -455,6 +499,13 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         } catch (Exception e) {
             return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}";
         }
+    }
+
+    private static String toolError(Long id, String message) {
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("content", List.of(Map.of("type", "text", "text", message)));
+        resp.put("isError", true);
+        return responseJson(id, resp);
     }
 
     private static String errorJson(Long id, int code, String message) {

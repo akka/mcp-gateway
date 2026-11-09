@@ -12,7 +12,7 @@ Instead of setting up and maintaining a separate connection for every system, yo
 
 - **One connection instead of many.** Add the gateway once and every connected system becomes available to your assistant.
 - **You sign in as yourself.** Access goes through your Okta account, so the assistant only ever sees what you are already allowed to see.
-- **Nothing to install or configure.** No API keys to copy around, no credentials stored on your laptop.
+- **Nothing to install or configure.** No API keys to copy around, no credentials stored on your laptop (the Customer Hub is the exception: you paste a token it issues to you).
 - **Everything is recorded.** Each action an assistant takes through the gateway is logged, so there is always a clear record of what was accessed and when.
 
 ## Getting started
@@ -39,7 +39,7 @@ Your assistant now has access to the connected systems. Simply ask for what you 
 
 ## Connecting a system
 
-Some systems need to be linked to your account before they can be used. Open the gateway in your browser, sign in, and you will see a dashboard listing every available system along with its current status. Choose **Connect** next to any system you want to use, sign in to that system once, and it stays connected from then on.
+Some systems need to be linked to your account before they can be used. Open the gateway in your browser, sign in, and you will see a dashboard listing every available system along with its current status. Choose **Connect** next to any system you want to use, sign in to that system once (for the Customer Hub, paste a token instead), and it stays connected from then on.
 
 ## Supported systems
 
@@ -52,7 +52,7 @@ Access control is also configured through the environment — none of these have
 - `OKTA_GROUP_READER`, `OKTA_GROUP_WRITER`, `OKTA_GROUP_ADMIN`, `OKTA_GROUP_ESCALATER` — the Okta group names that grant each gateway role (see [Access and permissions](#access-and-permissions)). A role with no group set is granted to nobody.
 - `MCP_OAUTH_REDIRECT_HOST_ALLOWLIST` — comma-separated hostnames allowed for `https://` `redirect_uris` when an MCP client dynamically registers itself. Defaults to `claude.ai,claude.com`, so Claude's hosted clients work out of the box; setting it replaces the default (list every host you want, including those two if you still need them). Loopback redirect URIs (`127.0.0.1`, `localhost`, `[::1]`) are always allowed, per RFC 8252. Set it to an empty value to reject every https redirect host, so only loopback clients can register.
 
-Each system is also gated by an Okta application, identified by its app instance id in `<SYSTEM>_OKTA_APP_ID` (listed per system below). Leaving one unset disables app-gating for that system (it appears accessible to everyone who can otherwise reach it).
+Each system is also gated by an Okta application, identified by its app instance id in `<SYSTEM>_OKTA_APP_ID` (listed per system below). Leaving one unset disables app-gating for that system (it appears accessible to everyone who can otherwise reach it), except for the Customer Hub, which stays off without it.
 
 Optional support-contact settings surface in the "request an integration" help text: `SUPPORT_EMAIL` and `SUPPORT_SLACK_CHANNEL`. When unset, users are pointed at "your gateway administrator" generically.
 
@@ -161,6 +161,10 @@ Saving a Slack draft (`slack_draft_message`) uses Slack's hosted MCP server, so 
 - `SEAMLESS_MCP_URL` *(optional — defaults to Seamless's hosted server)*
 - `SEAMLESS_OKTA_APP_ID`
 
+**Customer Hub**: Akka's internal record of customer requests and priorities. You paste a token the hub issued to you instead of signing in; see [The Customer Hub](#the-customer-hub).
+- `CUSTOMER_HUB_MCP_URL` *(base URL of the hub; its MCP endpoint is `<base>/mcp`)*
+- `CUSTOMER_HUB_OKTA_APP_ID`
+
 The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_MCP_URL` and `OKTA_ADMIN_OKTA_APP_ID`.
 
 `OKTA_JWKS_URI` is optional and overrides where Okta sign-in keys are fetched from.
@@ -169,7 +173,7 @@ The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_M
 
 ## Seeing what happened
 
-The gateway keeps a full history of the actions taken on your behalf. From the dashboard you can review which systems were used, what was requested, and when. If something looks wrong, you can flag it there.
+The gateway keeps a full history of the actions taken on your behalf. From the dashboard you can review which systems were used, what was requested, and when. If something looks wrong, you can flag it there. The one exception to "what was requested" is the Customer Hub: its entries show the tool and the time but not the arguments or the results.
 
 ## Access and permissions
 
@@ -205,6 +209,7 @@ Every system is tied to an Okta application. Being assigned that application is 
 | Reo | Reo |
 | Groundcover | Groundcover |
 | Seamless.AI | Seamless.AI |
+| Customer Hub | Customer Hub |
 | Okta admin lookups | Okta MCP Admin |
 
 An application counts as assigned when it is active and assigned to you, whether or not its icon is shown on your Okta dashboard. That lets an application exist only to give the gateway access to a system.
@@ -223,15 +228,23 @@ Enabling a system is a deliberate decision: review the OAuth scopes users grant 
 
 ### Every tool is always listed
 
-The tool list does not depend on your role, on which systems have writes enabled, or, once anyone has connected a system, on whether you have. A tool you cannot use yet is still listed, and calling it returns an error saying what is wrong: not connected, read-only through the gateway, or write access not permitted.
+The tool list does not depend on your role, on which systems have writes enabled, or, once anyone has connected a system, on whether you have. A tool you cannot use yet is still listed, and calling it returns an error saying what is wrong: not connected, read-only through the gateway, or write access not permitted (or, for a tool your assistant listed before the operator turned the system off, not set up on this gateway).
 
-This is deliberate. Assistants fetch the tool list once, when they connect, and the main ones ignore "tool list changed" notifications, so a list that varied would stay stale until the assistant was restarted. The one thing that shapes it is your Okta application assignments, read at sign-in and on each renewal; a renewal that cannot reach Okta leaves them as they were. For a system nobody has connected yet there is nothing to list, so its tools appear after the first connection (restart the assistant, or have it call `howto_refresh_tools`).
+This is deliberate. Assistants fetch the tool list once, when they connect, and the main ones ignore "tool list changed" notifications, so a list that varied would stay stale until the assistant was restarted. What shapes it is your Okta application assignments, read at sign-in and on each renewal (a renewal that cannot reach Okta leaves them as they were), and whether the operator has set up the Customer Hub on this gateway. For a system nobody has connected yet there is nothing to list, so its tools appear after the first connection (restart the assistant, or have it call `howto_refresh_tools`).
 
 `AkkaMcpGatewayWriteGateIntegrationTest` pins this behaviour, and `OktaAppsRefreshIntegrationTest` pins it across a renewal that cannot reach Okta.
 
 ### Connecting is still per-person
 
-Group membership and app assignment establish that you are *allowed* to use a system. They do not connect it. Each user still signs in to each system once through the dashboard, and the gateway acts strictly as that person — never with a shared or elevated account. So a colleague who can reach Salesforce sees only the Salesforce records their own Salesforce login permits.
+Group membership and app assignment establish that you are *allowed* to use a system. They do not connect it. Each user still signs in to each system once through the dashboard, and the gateway acts strictly as that person, never with a shared or elevated account. So a colleague who can reach Salesforce sees only the Salesforce records their own Salesforce login permits. The Customer Hub connects with a token you paste instead of a sign-in, and it is still your own: the hub decides what that token may see.
+
+### The Customer Hub
+
+- **Your token, your access.** The gateway checks a pasted token with the hub before keeping it and forwards it as `Authorization: Bearer`. The hub decides what that person may see on every call, on top of the gateway's Okta application, role and write checks. The check of a pasted token is only as strong as the hub's own authentication of its tool listing. The gateway cannot tell whose token a person pasted, so the hub attributes calls to the token's owner.
+- **Nothing kept.** The gateway stores the token to forward it, and keeps no arguments or results of these calls: its history shows who called which tool, when and whether it succeeded, and call bodies are never logged. Hub error text reaches the caller but is not kept.
+- **A refused token.** A tool call the hub answers with 401 disconnects that user, who connects again with a new token.
+- **Only when set up.** The connector stays off unless both settings are set and the URL is `https` (plain `http` only for loopback). Connect and disconnect refuse a browser request whose `Origin` is not the gateway's own address (`MCP_BASE_URL`).
+- **One tool list.** The hub can list different tools for different tokens, so the gateway only adds to its cached tool list for this system and lists that whole cache to everyone with the Customer Hub application. The cache grows when someone connects, tests the connection, or lists tools while nothing is cached; a tool the hub removes stays listed. A hub tool that does not say it only reads is treated as a write, and a tool once seen as a write stays one. Hub tool listings must not carry per-user values, because the cache is shared.
 
 ## Development
 

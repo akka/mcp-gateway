@@ -22,6 +22,33 @@ public class McpClientsTest {
     }
 
     @Test
+    public void everyConnector_hasItsOwnId() {
+        var ids = McpClients.serviceClients(null, null, ConfigFactory.load()).stream().map(RemoteMcpClient::getMcpId).toList();
+
+        assertThat(ids).doesNotHaveDuplicates();
+    }
+
+    @Test
+    public void theCustomerHubConnector_isRegistered_andKeepsNoToolContent() {
+        var connectors = McpClients.serviceClients(null, null, ConfigFactory.load());
+
+        assertThat(connectors)
+                .filteredOn(c -> c.getMcpId().equals(CustomerHubMcpClient.MCP_ID))
+                .singleElement()
+                .satisfies(c -> assertThat(c.recordsToolContent()).isFalse());
+    }
+
+    @Test
+    public void everyOtherConnector_keepsToolContentInTheHistory() {
+        var connectors = McpClients.serviceClients(null, null, ConfigFactory.load());
+
+        assertThat(connectors)
+                .filteredOn(c -> !c.getMcpId().equals(CustomerHubMcpClient.MCP_ID))
+                .isNotEmpty()
+                .allMatch(RemoteMcpClient::recordsToolContent);
+    }
+
+    @Test
     public void workspaceClients_areExactlyTheWorkspaceProductsInServiceClients() {
         var config = ConfigFactory.load();
         var workspaceIds = McpClients.workspaceClients(null, config).stream().map(RemoteMcpClient::getMcpId).toList();

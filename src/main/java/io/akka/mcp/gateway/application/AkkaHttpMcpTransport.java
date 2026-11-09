@@ -81,6 +81,20 @@ public class AkkaHttpMcpTransport implements McpTransport {
         return new Builder();
     }
 
+    /** The server answered with a non-success HTTP status. */
+    public static final class UnexpectedStatusException extends RuntimeException {
+        private final int status;
+
+        UnexpectedStatusException(int status) {
+            super("Unexpected status code: " + status);
+            this.status = status;
+        }
+
+        public int status() {
+            return status;
+        }
+    }
+
     @Override
     public void start(McpOperationHandler operationHandler) {
         this.operationHandler = operationHandler;
@@ -236,8 +250,7 @@ public class AkkaHttpMcpTransport implements McpTransport {
                         });
                 return;
             }
-            future.completeExceptionally(
-                    new RuntimeException("Unexpected status code: " + response.status().intValue()));
+            future.completeExceptionally(new UnexpectedStatusException(response.status().intValue()));
             return;
         }
 

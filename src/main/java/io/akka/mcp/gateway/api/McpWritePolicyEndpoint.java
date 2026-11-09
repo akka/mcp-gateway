@@ -126,6 +126,7 @@ public class McpWritePolicyEndpoint extends AbstractProtectedEndpoint {
     private WritePolicyResponse view(WritePolicy policy) {
         var enabled = Set.copyOf(policy.enabledMcpIds());
         var rows = connectors.stream()
+                .filter(RemoteMcpClient::isAvailable)
                 .map(c -> new Connector(c.getMcpId(), c.getMcpName(), enabled.contains(c.getMcpId())))
                 .sorted(Comparator.comparing(Connector::mcpName))
                 .toList();

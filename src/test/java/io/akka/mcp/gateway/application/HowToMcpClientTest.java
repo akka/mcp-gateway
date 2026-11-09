@@ -40,6 +40,20 @@ public class HowToMcpClientTest {
     }
 
     @Test
+    public void aSystemThatIsNotSetUp_isLeftOutOfTheToolsTheStatusAndTheConnectInstructions() {
+        var notSetUp = stubClient("customer-hub", "Customer Hub", false);
+        var client = new HowToMcpClient(BASE_URL, SUPPORT_EMAIL, SUPPORT_SLACK, List.of(stubClient("zoho-desk", "Zoho Desk"), notSetUp));
+
+        var names = client.listTools("any-user").stream().map(e -> (String) e.toolSpec().get("name")).toList();
+        var status = client.callTool("any-user", "howto_get_started", Map.of());
+        var instructions = client.callTool("any-user", "howto_connect_customer_hub", Map.of());
+
+        assertThat(names).contains("howto_connect_zoho_desk").doesNotContain("howto_connect_customer_hub");
+        assertThat(status.text()).contains("Zoho Desk").doesNotContain("Customer Hub");
+        assertThat(instructions.isError()).isTrue();
+    }
+
+    @Test
     public void listTools_replacesHyphensWithUnderscoresInToolName() {
         var stub = stubClient("google-drive", "Google Drive");
         var client = new HowToMcpClient(BASE_URL, SUPPORT_EMAIL, SUPPORT_SLACK, List.of(stub));
@@ -177,7 +191,12 @@ public class HowToMcpClientTest {
     // ---- helpers ----
 
     private static RemoteMcpClient stubClient(String mcpId, String mcpName) {
+        return stubClient(mcpId, mcpName, true);
+    }
+
+    private static RemoteMcpClient stubClient(String mcpId, String mcpName, boolean available) {
         return new RemoteMcpClient() {
+            @Override public boolean isAvailable() { return available; }
             @Override public String getMcpId() { return mcpId; }
             @Override public String getMcpName() { return mcpName; }
             @Override public String getRequiredOktaAppId() { return ""; }

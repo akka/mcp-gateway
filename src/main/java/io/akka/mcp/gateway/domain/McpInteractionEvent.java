@@ -14,7 +14,7 @@ public sealed interface McpInteractionEvent {
             String tool,
             Map<String, String> params,
             Instant timestamp,
-            // "req", "resp", "connect-attempt", "connect-success", "connect-failed", "disconnect",
+            // "req", "resp", "connect-blocked", "connect-attempt", "connect-success", "connect-failed", "disconnect",
             // "rejected", "read-rejected", "write-rejected", "policy-change"
             String direction,
             String output      // nullable; response text for "resp", error detail for failures

@@ -39,6 +39,7 @@
         .btn-danger:hover { background: #fdf0ef; }
         .btn-secondary { background: #fff; color: #0070d2; border: 1px solid #0070d2; }
         .btn-secondary:hover { background: #f0f7ff; }
+        .token-input { flex: 1 1 260px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.88rem; font-family: monospace; }
         .token-expiry { font-size: 0.78rem; color: #aaa; margin-top: 14px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
         .test-result { margin-top: 12px; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; display: none; }
         .test-ok { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
@@ -327,6 +328,21 @@
         </div>
     </div>
 
+    <div class="card" data-mcp-id="customer-hub" style="display:none">
+        <div class="card-header" onclick="toggleCard('chub')">
+            <h2>Customer Hub</h2>
+            <div class="card-header-right">
+                <span class="status-dot" id="chub-dot"></span>
+                <span class="chevron" id="chub-chevron">▼</span>
+            </div>
+        </div>
+        <div class="card-body" id="chub-body">
+            <div id="chub-status" class="status loading">Loading status…</div>
+            <div id="chub-actions" class="actions"></div>
+            <div id="chub-test-result" class="test-result"></div>
+        </div>
+    </div>
+
     <div class="card" data-mcp-id="slack" style="display:none">
         <div class="card-header" onclick="toggleCard('slack')">
             <h2>Slack</h2>
@@ -494,6 +510,98 @@
             }
         }
 
+        // The Customer Hub connects with a token the user pastes, so its card has an input instead of
+        // a Connect link, and no way to reveal the token again.
+        function customerHubButton(label, className, onClick) {
+            var button = document.createElement('button');
+            button.className = className;
+            button.textContent = label;
+            button.onclick = onClick;
+            return button;
+        }
+
+        function showCustomerHubResult(state, message) {
+            var el = document.getElementById('chub-test-result');
+            el.className = 'test-result ' + state;
+            el.style.display = 'block';
+            el.textContent = message;
+        }
+
+        function toLogin() {
+            window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search);
+        }
+
+        function renderCustomerHubStatus(data) {
+            var box = document.getElementById('chub-status');
+            var actions = document.getElementById('chub-actions');
+            actions.innerHTML = '';
+            if (data.connected) {
+                box.className = 'status connected';
+                box.textContent = 'Connected';
+                actions.appendChild(customerHubButton('Test Connection', 'btn btn-secondary', function() {
+                    testConnection('/customer-hub/test', 'chub-test-result');
+                }));
+                actions.appendChild(customerHubButton('Disconnect', 'btn btn-danger', disconnectCustomerHub));
+                setDot('chub', 'connected');
+            } else {
+                box.className = 'status disconnected';
+                box.textContent = 'Not connected. Create a token in the Customer Hub, paste it here and connect.';
+                var connectButton;
+                var input = document.createElement('input');
+                input.type = 'password';
+                input.id = 'chub-token-input';
+                input.className = 'token-input';
+                input.placeholder = 'Customer Hub token';
+                input.setAttribute('aria-label', 'Customer Hub token');
+                input.autocomplete = 'new-password';
+                input.spellcheck = false;
+                input.onkeydown = function(e) { if (e.key === 'Enter') connectCustomerHub(connectButton); };
+                connectButton = customerHubButton('Connect', 'btn btn-primary', function() { connectCustomerHub(connectButton); });
+                actions.appendChild(input);
+                actions.appendChild(connectButton);
+                document.getElementById('chub-test-result').style.display = 'none';
+                setDot('chub', 'disconnected');
+            }
+        }
+
+        function connectCustomerHub(button) {
+            var input = document.getElementById('chub-token-input');
+            var token = input.value.trim();
+            if (!token) { showCustomerHubResult('test-fail', 'Paste your Customer Hub token first.'); return; }
+            if (button.disabled) return;
+            button.disabled = true;
+            showCustomerHubResult('loading', 'Checking the token with the Customer Hub…');
+            fetch('/customer-hub/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token })
+            })
+                .then(function(r) {
+                    if (r.status === 401) { toLogin(); return null; }
+                    return r.json().catch(function() { return { ok: false, message: 'The gateway could not process the request.' }; });
+                })
+                .then(function(result) {
+                    if (!result) return;
+                    if (result.ok) {
+                        input.value = '';
+                        STATUS_FETCHERS['customer-hub']();
+                    }
+                    showCustomerHubResult(result.ok ? 'test-ok' : 'test-fail', result.message);
+                })
+                .catch(function() { showCustomerHubResult('test-fail', 'Failed to reach the gateway.'); })
+                .then(function() { button.disabled = false; });
+        }
+
+        function disconnectCustomerHub() {
+            fetch('/customer-hub/disconnect', { method: 'POST' })
+                .then(function(r) {
+                    if (r.status === 401) { toLogin(); return; }
+                    if (!r.ok) { showCustomerHubResult('test-fail', 'Could not disconnect. Reload the page and try again.'); return; }
+                    STATUS_FETCHERS['customer-hub']();
+                })
+                .catch(function() { showCustomerHubResult('test-fail', 'Failed to disconnect.'); });
+        }
+
         function renderError(statusId) {
             document.getElementById(statusId).className = 'status disconnected';
             document.getElementById(statusId).textContent = 'Unable to load status. Is the service running?';
@@ -584,13 +692,14 @@
             'groundcover':     function() { fetch('/groundcover/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderGroundcoverStatus).catch(function() { renderError('gc-status'); }); },
             'hubspot':         function() { fetch('/hubspot/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderHubspotStatus).catch(function() { renderError('hubspot-status'); }); },
             'seamless':        function() { fetch('/seamless/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSeamlessStatus).catch(function() { renderError('seamless-status'); }); },
+            'customer-hub':    function() { fetch('/customer-hub/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderCustomerHubStatus).catch(function() { renderError('chub-status'); }); },
             'slack':           function() { fetch('/slack/oauth/status', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(renderSlackStatus).catch(function() { renderError('slack-status'); }); },
             'okta-admin':      function() { setDot('okta', 'connected'); }
         };
 
         fetch('/auth/me', { cache: 'no-store' })
             .then(function(r) {
-                if (r.status === 401 || r.redirected) { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); return null; }
+                if (r.status === 401 || r.redirected) { toLogin(); return null; }
                 return r.json();
             })
             .then(function(data) {
@@ -721,7 +830,7 @@
                         Object.values(STATUS_FETCHERS).forEach(function(fn) { fn(); });
                     });
             })
-            .catch(function() { window.location.href = '/login?return_to=' + encodeURIComponent(location.pathname + location.search); });
+            .catch(function() { toLogin(); });
     </script>
 </body>
 </html>

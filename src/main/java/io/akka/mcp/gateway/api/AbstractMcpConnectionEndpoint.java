@@ -6,9 +6,8 @@ import akka.javasdk.client.ComponentClient;
 import akka.javasdk.http.HttpResponses;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
-import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
-import io.akka.mcp.gateway.domain.McpConfig;
+import io.akka.mcp.gateway.application.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,9 +72,7 @@ public abstract class AbstractMcpConnectionEndpoint extends AbstractProtectedEnd
                 return;
             }
             var metas = entries.stream().map(RemoteMcpClient.ToolEntry::meta).toList();
-            componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
-                    .method(McpRegistryEntity::register)
-                    .invoke(new McpConfig(client.getMcpId(), client.getMcpName(), metas));
+            ToolRegistry.record(componentClient, client, metas);
             log.info("[{}] cache warm: registered {} tools", client.getMcpId(), metas.size());
         } catch (Exception e) {
             log.warn("[{}] cache warm failed (non-fatal): {}", client.getMcpId(), e.getMessage());

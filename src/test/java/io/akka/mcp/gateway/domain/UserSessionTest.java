@@ -48,6 +48,21 @@ public class UserSessionTest {
                 groups, "id-token", List.of());
     }
 
+    @Test
+    public void mayUseApp_whenNoAppIsRequired_isTrue() {
+        assertThat(sessionWithGroups(List.of()).mayUseApp("")).isTrue();
+    }
+
+    @Test
+    public void mayUseApp_whenAnAppIsRequired_isTrueOnlyForAUserAssignedIt() {
+        var assigned = new UserSession("user@lightbend.com", "User", Instant.now(), Instant.now().plusSeconds(3600),
+                List.of(), "id-token", List.of(new UserSession.App("0oa123", "Salesforce")));
+
+        assertThat(assigned.mayUseApp("0oa123")).isTrue();
+        assertThat(assigned.mayUseApp("0oa999")).isFalse();
+        assertThat(sessionWithGroups(List.of()).mayUseApp("0oa123")).isFalse();
+    }
+
     private static final String READER = "mcp-gateway-reader";
     private static final String WRITER = "mcp-gateway-writer";
 

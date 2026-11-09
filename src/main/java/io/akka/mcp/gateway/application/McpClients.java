@@ -30,9 +30,16 @@ public final class McpClients {
                 new GoogleCalendarMcpClient(componentClient, config.getString("google-calendar.mcp-url"), config.getString("google-calendar.okta-app-id")),
                 new HubspotMcpClient(componentClient, config.getString("hubspot.mcp-url"), config.getString("hubspot.okta-app-id")),
                 new OktaMcpClient(config.getString("okta-admin.mcp-url"), httpClientProvider, config.getString("okta-admin.okta-app-id")),
-                new SeamlessMcpClient(config.getString("seamless.mcp-url"), config.getString("seamless.api-key"), config.getString("seamless.okta-app-id"))
+                new SeamlessMcpClient(config.getString("seamless.mcp-url"), config.getString("seamless.api-key"), config.getString("seamless.okta-app-id")),
+                customerHubClient(componentClient, httpClientProvider, config)
         ));
         return List.copyOf(clients);
+    }
+
+    public static CustomerHubMcpClient customerHubClient(
+            ComponentClient componentClient, HttpClientProvider httpClientProvider, Config config) {
+        return new CustomerHubMcpClient(componentClient, httpClientProvider,
+                config.getString("customer-hub.mcp-url"), config.getString("customer-hub.okta-app-id"));
     }
 
     /** The Google Workspace products, which all authenticate with the one Google Workspace connection. */

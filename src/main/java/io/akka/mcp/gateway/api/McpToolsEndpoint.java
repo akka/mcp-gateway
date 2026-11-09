@@ -6,10 +6,19 @@ import akka.javasdk.annotations.Acl;
 import akka.javasdk.annotations.http.Get;
 import akka.javasdk.annotations.http.HttpEndpoint;
 import akka.javasdk.client.ComponentClient;
+import akka.javasdk.http.HttpClientProvider;
 import akka.javasdk.http.HttpResponses;
 import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.akka.mcp.gateway.application.McpClients;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
+import io.akka.mcp.gateway.application.RemoteMcpClient;
+import io.akka.mcp.gateway.domain.UserSession;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @HttpEndpoint("/mcp/tools")
 @Acl(allow = @Acl.Matcher(principal = Acl.Principal.INTERNET))
@@ -17,8 +26,19 @@ public class McpToolsEndpoint extends AbstractProtectedEndpoint {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    public McpToolsEndpoint(ComponentClient componentClient, Config config) {
+    private final Map<String, RemoteMcpClient> clientsByMcpId;
+
+    public McpToolsEndpoint(ComponentClient componentClient, HttpClientProvider httpClientProvider, Config config) {
         super(componentClient, config);
+        this.clientsByMcpId = McpClients.serviceClients(componentClient, httpClientProvider, config).stream()
+                .collect(Collectors.toMap(RemoteMcpClient::getMcpId, Function.identity()));
+    }
+
+    private boolean mayUse(UserSession session, String mcpId) {
+        return Optional.ofNullable(clientsByMcpId.get(mcpId))
+                .filter(RemoteMcpClient::isAvailable)
+                .filter(client -> session.mayUseApp(client.getRequiredOktaAppId()))
+                .isPresent();
     }
 
     @Get("/")
@@ -29,11 +49,15 @@ public class McpToolsEndpoint extends AbstractProtectedEndpoint {
 
     @Get("/data")
     public HttpResponse toolsData() {
-        if (requireSession() == null) return unauthorized();
-        var state = componentClient
+        var session = requireSession();
+        if (session == null) return unauthorized();
+        var registry = componentClient
                 .forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                 .method(McpRegistryEntity::list)
                 .invoke();
+        var state = new McpRegistryEntity.State(registry.configs().stream()
+                .filter(config -> mayUse(session, config.mcpId()))
+                .toList());
         try {
             return HttpResponse.create()
                     .withStatus(200)
