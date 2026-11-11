@@ -24,11 +24,12 @@ public class HowToMcpClient implements RemoteMcpClient {
         this.mcpConnectUrl = baseUrl + "/mcp";
         this.supportEmail = supportEmail == null ? "" : supportEmail;
         this.supportSlackChannel = supportSlackChannel == null ? "" : supportSlackChannel;
-        this.serviceClients = List.copyOf(clients);
+        var available = clients.stream().filter(RemoteMcpClient::isAvailable).toList();
+        this.serviceClients = List.copyOf(available);
 
         Map<String, String> content = new LinkedHashMap<>();
         content.put("howto_refresh_tools", buildRefreshToolsBody());
-        for (var client : clients) {
+        for (var client : available) {
             String toolName = "howto_connect_" + client.getMcpId().replace("-", "_");
             content.put(toolName, client.howTo(dashboardUrl).markdownBody());
         }
@@ -148,7 +149,7 @@ public class HowToMcpClient implements RemoteMcpClient {
         sb.append("## How to connect a service\n\n");
         sb.append("1. Open the MCP Gateway dashboard: ").append(dashboardUrl).append("\n");
         sb.append("2. Log in with your Okta SSO account.\n");
-        sb.append("3. Click **Connect** next to the service you need and follow the OAuth flow.\n");
+        sb.append("3. Click **Connect** next to the service you need and follow the instructions on its card.\n");
         sb.append("4. Tool calls work immediately — no reconnect needed after connecting.\n\n");
         sb.append("If the user asks about a service not listed above, call `howto_report_unsupported` with the service name.\n");
         sb.append("If a tool call fails or the user expects different tools, call `howto_refresh_tools` for guidance.\n");
@@ -170,7 +171,7 @@ public class HowToMcpClient implements RemoteMcpClient {
 
                 1. Open the MCP Gateway dashboard.
                 2. Find the service card (e.g. Slack, Zoho Desk) and click **Connect**.
-                3. Complete the OAuth flow.
+                3. Follow the instructions on its card.
                 4. Try the tool call again — no reconnect needed.
 
                 ## If an entirely new service was added to the gateway

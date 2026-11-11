@@ -32,11 +32,15 @@ public final class GatewayFixtures {
 
     /** A browser session cookie value, what the dashboard and admin routes accept. */
     public static String browserSession(ComponentClient client, String email, List<String> groups) {
+        return browserSession(client, email, groups, List.of());
+    }
+
+    public static String browserSession(ComponentClient client, String email, List<String> groups, List<UserSession.App> apps) {
         var token = UUID.randomUUID().toString();
         client.forKeyValueEntity(token)
                 .method(UserSessionEntity::create)
                 .invoke(new UserSessionEntity.CreateCommand(
-                        email, "User", Instant.now().plusSeconds(3600), groups, "", List.of()));
+                        email, "User", Instant.now().plusSeconds(3600), groups, "", apps));
         return token;
     }
 

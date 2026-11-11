@@ -47,6 +47,11 @@ public record UserSession(
         return apps().stream().anyMatch(a -> a.id().equals(appId));
     }
 
+    /** True when no application is required, or the user is assigned it. */
+    public boolean mayUseApp(String requiredAppId) {
+        return requiredAppId.isBlank() || hasApp(requiredAppId);
+    }
+
     public boolean isEmpty() {
         return email == null;
     }

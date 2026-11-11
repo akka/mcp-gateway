@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Admin control for which MCPs may run write tools. Nothing is enabled until an admin saves a
@@ -101,7 +102,7 @@ public class McpWritePolicyEndpoint extends AbstractProtectedEndpoint {
                 .forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
                 .method(McpWritePolicyEntity::select)
                 .invoke(new McpWritePolicyEntity.SelectCommand(
-                        request.enabledMcpIds(), request.basedOnVersion(), session.email()));
+                        withEnablementOfSystemsThatAreOff(request.enabledMcpIds()), request.basedOnVersion(), session.email()));
 
         return switch (result.outcome()) {
             case STALE -> HttpResponse.create()
@@ -116,6 +117,13 @@ public class McpWritePolicyEndpoint extends AbstractProtectedEndpoint {
         };
     }
 
+    /** A system that is configured but off is not on the page, so saving from the page must not drop the writes already enabled on it. */
+    private List<String> withEnablementOfSystemsThatAreOff(List<String> selected) {
+        var off = connectors.stream().filter(c -> !c.isAvailable()).map(RemoteMcpClient::getMcpId).collect(Collectors.toSet());
+        var keptOff = savedPolicy().enabledMcpIds().stream().filter(off::contains);
+        return Stream.concat(selected.stream(), keptOff).distinct().toList();
+    }
+
     private WritePolicy savedPolicy() {
         return componentClient
                 .forKeyValueEntity(McpWritePolicyEntity.ENTITY_ID)
@@ -126,6 +134,7 @@ public class McpWritePolicyEndpoint extends AbstractProtectedEndpoint {
     private WritePolicyResponse view(WritePolicy policy) {
         var enabled = Set.copyOf(policy.enabledMcpIds());
         var rows = connectors.stream()
+                .filter(RemoteMcpClient::isAvailable)
                 .map(c -> new Connector(c.getMcpId(), c.getMcpName(), enabled.contains(c.getMcpId())))
                 .sorted(Comparator.comparing(Connector::mcpName))
                 .toList();

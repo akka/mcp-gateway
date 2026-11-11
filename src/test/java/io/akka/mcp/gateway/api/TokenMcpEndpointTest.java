@@ -1,0 +1,35 @@
+package io.akka.mcp.gateway.api;
+
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+public class TokenMcpEndpointTest {
+
+    @Test
+    public void connectRequest_toString_neverShowsTheToken() {
+        assertThat(new TokenMcpEndpoint.ConnectRequest("upstreamtoken-super-secret").toString()).doesNotContain("super-secret");
+    }
+
+    @Test
+    public void originOf_equivalentSpellings_areEqual() {
+        assertThat(TokenMcpEndpoint.originOf("https://Gateway.Example.com:443/path")).contains("https://gateway.example.com");
+        assertThat(TokenMcpEndpoint.originOf("https://gateway.example.com")).contains("https://gateway.example.com");
+        assertThat(TokenMcpEndpoint.originOf("HTTP://localhost:80")).contains("http://localhost");
+        assertThat(TokenMcpEndpoint.originOf("http://localhost:9000")).contains("http://localhost:9000");
+    }
+
+    @Test
+    public void originOf_somethingThatIsNotAnAbsoluteUrl_isEmpty() {
+        assertThat(TokenMcpEndpoint.originOf("not an origin")).isEmpty();
+        assertThat(TokenMcpEndpoint.originOf("/relative")).isEmpty();
+        assertThat(TokenMcpEndpoint.originOf("null")).isEmpty();
+    }
+
+    @Test
+    public void loggable_replacesUnprintableCharacters_andCutsALongHeader() {
+        assertThat(TokenMcpEndpoint.loggable("https://a.example.com\r\nX-Injected: 1")).isEqualTo("https://a.example.com??X-Injected: 1");
+        assertThat(TokenMcpEndpoint.loggable("h".repeat(101))).isEqualTo("h".repeat(100) + "...");
+        assertThat(TokenMcpEndpoint.loggable("h".repeat(100))).isEqualTo("h".repeat(100));
+    }
+}

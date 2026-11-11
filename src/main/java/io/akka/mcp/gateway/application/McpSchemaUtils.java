@@ -1,6 +1,8 @@
 package io.akka.mcp.gateway.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.mcp.client.McpToolMetadataKeys;
 import dev.langchain4j.model.chat.request.json.JsonAnyOfSchema;
 import dev.langchain4j.model.chat.request.json.JsonArraySchema;
 import dev.langchain4j.model.chat.request.json.JsonBooleanSchema;
@@ -12,9 +14,12 @@ import dev.langchain4j.model.chat.request.json.JsonRawSchema;
 import dev.langchain4j.model.chat.request.json.JsonReferenceSchema;
 import dev.langchain4j.model.chat.request.json.JsonSchemaElement;
 import dev.langchain4j.model.chat.request.json.JsonStringSchema;
+import io.akka.mcp.gateway.domain.McpConfig;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 class McpSchemaUtils {
 
@@ -71,5 +76,42 @@ class McpSchemaUtils {
             }
         }
         return map;
+    }
+
+    /**
+     * The gateway's view of an upstream tool listed under {@code exposedName}: its spec, annotations and read/write
+     * classification. A tool that does not say it only reads is a write, whatever its parameters.
+     */
+    static RemoteMcpClient.ToolEntry toolEntry(String exposedName, ToolSpecification spec) {
+        var inputSchema = schemaToMap(spec.parameters());
+        Map<String, Object> tool = new LinkedHashMap<>();
+        tool.put("name", exposedName);
+        tool.put("description", spec.description());
+        tool.put("inputSchema", inputSchema);
+        var annotations = annotationsFromMetadata(spec.metadata());
+        if (!annotations.isEmpty()) tool.put("annotations", annotations);
+        boolean readOnly = readOnlyHint(spec.metadata()).orElse(false);
+        var meta = new McpConfig.ToolMeta(exposedName, spec.description(), inputSchema, readOnly, false);
+        return new RemoteMcpClient.ToolEntry(tool, meta);
+    }
+
+    private static Optional<Boolean> readOnlyHint(Map<String, Object> metadata) {
+        if (metadata == null) return Optional.empty();
+        return metadata.get(McpToolMetadataKeys.READ_ONLY_HINT) instanceof Boolean hint ? Optional.of(hint) : Optional.empty();
+    }
+
+    private static Map<String, Object> annotationsFromMetadata(Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) return Map.of();
+        Map<String, Object> annotations = new LinkedHashMap<>();
+        for (var key : List.of(
+                McpToolMetadataKeys.READ_ONLY_HINT,
+                McpToolMetadataKeys.DESTRUCTIVE_HINT,
+                McpToolMetadataKeys.IDEMPOTENT_HINT,
+                McpToolMetadataKeys.OPEN_WORLD_HINT,
+                McpToolMetadataKeys.TITLE)) {
+            var value = metadata.get(key);
+            if (value != null) annotations.put(key, value);
+        }
+        return annotations;
     }
 }
