@@ -140,6 +140,14 @@ public class TokenMcpClient implements RemoteMcpClient {
     public boolean toolListDependsOnCaller() { return true; }
 
     @Override
+    public boolean listsCachedTool(String toolName) {
+        return !toolNameTakenByAnotherSystem.test(toolName);
+    }
+
+    @Override
+    public boolean yieldsToOtherSystems() { return true; }
+
+    @Override
     public boolean isAvailable() {
         return config.isUsable();
     }

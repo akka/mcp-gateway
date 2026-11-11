@@ -170,8 +170,20 @@ public class TokenMcpConfigTest {
     }
 
     @Test
-    public void anUppercaseScheme_isNotUsable() {
-        assertThat(usable("HTTPS://billing.example.com", "app")).isFalse();
+    public void aUrlWithoutASchemeSeparator_isLeftAsItIs() {
+        var parsed = TokenMcpConfig.parse("[" + VALID.replace("https://billing.example.com", "Billing:8080") + "]");
+
+        assertThat(parsed).singleElement().satisfies(c -> assertThat(c.mcpUrl()).isEqualTo("Billing:8080"));
+    }
+
+    @Test
+    public void anUppercaseScheme_isLowercased_soTheConnectorWorks() {
+        var parsed = TokenMcpConfig.parse("[" + VALID.replace("https://billing.example.com", "HTTPS://Billing.example.com/") + "]");
+
+        assertThat(parsed).singleElement().satisfies(c -> {
+            assertThat(c.mcpUrl()).isEqualTo("https://Billing.example.com");
+            assertThat(c.isUsable()).isTrue();
+        });
     }
 
     @Test

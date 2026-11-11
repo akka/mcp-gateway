@@ -84,7 +84,7 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
     @Get("/{id}/status")
     public HttpResponse status(String id) {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return unauthorized();
         var client = clientsById.get(id);
         if (client == null) return unknownConnector();
         var connection = session.mayUseApp(client.getRequiredOktaAppId())
@@ -117,10 +117,12 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
         return HttpResponses.ok();
     }
 
-    @Get("/{id}/test")
+    @Post("/{id}/test")
     public HttpResponse test(String id) {
         var session = requireSession();
-        if (session == null) return redirectToLogin();
+        if (session == null) return unauthorized();
+        var crossOrigin = crossOriginRefusal();
+        if (crossOrigin.isPresent()) return crossOrigin.get();
         var client = clientsById.get(id);
         if (client == null) return unknownConnector();
         var unavailable = unavailableTo(client, session);
@@ -204,7 +206,14 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
     private Optional<HttpResponse> crossOriginRefusal() {
         var sent = requestContext().requestHeader("Origin").map(HttpHeader::value);
         if (sent.isEmpty() || isOwnOrigin(sent.get())) return Optional.empty();
+        log.warn("Refused a request from origin {}: only {} (from MCP_BASE_URL) may use this route",
+                loggable(sent.get()), ownOrigin.orElse("no valid origin"));
         return Optional.of(testResultResponse(StatusCodes.FORBIDDEN, TestResult.fail("Cross-site requests are not accepted.")));
+    }
+
+    static String loggable(String header) {
+        var printable = header.replaceAll("[^\\x20-\\x7e]", "?");
+        return printable.length() <= 100 ? printable : printable.substring(0, 100) + "...";
     }
 
     private boolean isOwnOrigin(String sent) {

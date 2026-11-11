@@ -29,7 +29,10 @@ public class TokenMcpOktaAppGatingIntegrationTest extends TestKitSupport {
 
     @Override
     protected TestKit.Settings testKitSettings() {
-        return TestKit.Settings.DEFAULT.withAdditionalConfig(TokenMcpFixtures.setting("http://127.0.0.1:1", OKTA_APP_ID));
+        return TestKit.Settings.DEFAULT.withAdditionalConfig("""
+                %s
+                slack.mcp-url = "http://127.0.0.1:1"
+                """.formatted(TokenMcpFixtures.setting("http://127.0.0.1:1", OKTA_APP_ID)));
     }
 
     private void seedCachedUpstreamTool() {
@@ -103,6 +106,44 @@ public class TokenMcpOktaAppGatingIntegrationTest extends TestKitSupport {
                 .contains(SlackMcpClient.MCP_ID).doesNotContain(TokenMcpFixtures.ID);
         assertThat(systemsOnTheToolsPage("tools-page-with-app@lightbend.com",
                 List.of(new UserSession.App(OKTA_APP_ID, TokenMcpFixtures.NAME)))).contains(TokenMcpFixtures.ID);
+    }
+
+    private static McpConfig.ToolMeta slackSearch(boolean readOnly) {
+        return new McpConfig.ToolMeta("slack_search_messages", "Search", Map.of("type", "object"), readOnly, false);
+    }
+
+    /** The connector's entry comes first in the registry and Slack's after it, so a lookup by name alone finds the connector. */
+    private void connectorAndSlackBothCache(McpConfig.ToolMeta connectorsTool, McpConfig.ToolMeta slacksTool) {
+        var registry = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID);
+        registry.method(McpRegistryEntity::register).invoke(new McpConfig(TokenMcpFixtures.ID, TokenMcpFixtures.NAME, List.of(connectorsTool)));
+        registry.method(McpRegistryEntity::register).invoke(new McpConfig(SlackMcpClient.MCP_ID, "Slack", List.of(slacksTool)));
+    }
+
+    @Test
+    public void aCachedConnectorToolNamedLikeABuiltInTool_isNotListed_andNeverTakesTheCall() throws Exception {
+        connectorAndSlackBothCache(slackSearch(true), slackSearch(true));
+        var token = GatewayFixtures.mcpToken(componentClient, "shadow-call@lightbend.com", List.of(),
+                List.of(new UserSession.App(OKTA_APP_ID, TokenMcpFixtures.NAME)));
+
+        assertThat(listedTools(token)).filteredOn("slack_search_messages"::equals).hasSize(1);
+        var response = rpc(token, Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
+                "params", Map.of("name", "slack_search_messages", "arguments", Map.of())));
+
+        assertThat(response.path("result").path("content").path(0).path("text").asText()).contains("howto_connect_slack");
+    }
+
+    @Test
+    public void aCallIsClassifiedFromTheRoutedSystemsOwnEntry_notFromAnotherSystemsStaleOne() throws Exception {
+        connectorAndSlackBothCache(slackSearch(true), slackSearch(false));
+        var email = "classify-own-entry@lightbend.com";
+        GatewayFixtures.connectSlack(componentClient, email);
+        var token = GatewayFixtures.mcpToken(componentClient, email, List.of(),
+                List.of(new UserSession.App(OKTA_APP_ID, TokenMcpFixtures.NAME)));
+
+        var response = rpc(token, Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
+                "params", Map.of("name", "slack_search_messages", "arguments", Map.of())));
+
+        assertThat(response.path("result").path("content").path(0).path("text").asText()).contains("read-only through the gateway");
     }
 
     @Test

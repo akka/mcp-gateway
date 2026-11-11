@@ -566,7 +566,7 @@
                 box.className = 'status connected';
                 box.textContent = 'Connected';
                 actions.appendChild(tokenButton('Test Connection', 'btn btn-secondary', function() {
-                    testConnection('/token-mcp/' + connector.id + '/test', prefix + '-test-result');
+                    testConnection('/token-mcp/' + connector.id + '/test', prefix + '-test-result', 'POST');
                 }));
                 actions.appendChild(tokenButton('Disconnect', 'btn btn-danger', function() { disconnectToken(connector); }));
                 setDot(prefix, 'connected');
@@ -630,8 +630,12 @@
         function tokenStatusFetcher(connector) {
             return function() {
                 fetch('/token-mcp/' + connector.id + '/status', { cache: 'no-store' })
-                    .then(function(r) { if (!r.ok) throw new Error('status ' + r.status); return r.json(); })
-                    .then(function(data) { renderTokenStatus(connector, data); })
+                    .then(function(r) {
+                        if (r.status === 401) { toLogin(); return null; }
+                        if (!r.ok) throw new Error('status ' + r.status);
+                        return r.json();
+                    })
+                    .then(function(data) { if (data) renderTokenStatus(connector, data); })
                     .catch(function() { renderError('tok-' + connector.id + '-status'); });
             };
         }
@@ -660,13 +664,16 @@
             setDot(prefix, 'disconnected');
         }
 
-        function testConnection(testPath, resultId) {
+        function testConnection(testPath, resultId, method) {
             var el = document.getElementById(resultId);
             el.className = 'test-result loading';
             el.style.display = 'block';
             el.textContent = 'Testing…';
-            fetch(testPath, { cache: 'no-store' })
-                .then(function(r) { return r.json(); })
+            fetch(testPath, { cache: 'no-store', method: method || 'GET' })
+                .then(function(r) {
+                    if (r.status === 401) { toLogin(); return { ok: false, message: 'Your session has expired.' }; }
+                    return r.json();
+                })
                 .then(function(data) {
                     el.className = 'test-result ' + (data.ok ? 'test-ok' : 'test-fail');
                     el.innerHTML = '';

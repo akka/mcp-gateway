@@ -46,7 +46,7 @@ public class TokenMcpNotSetUpIntegrationTest extends TestKitSupport {
     public void testing_isRefusedAsNotSetUp() {
         var session = GatewayFixtures.browserSession(componentClient, "not-configured-test@lightbend.com", List.of());
 
-        var response = httpClient.GET(TokenMcpFixtures.path("test")).addHeader("Cookie", "SESSION=" + session).invoke();
+        var response = httpClient.POST(TokenMcpFixtures.path("test")).addHeader("Cookie", "SESSION=" + session).invoke();
 
         assertThat(response.status().intValue()).isEqualTo(503);
     }

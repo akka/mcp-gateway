@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.akka.mcp.gateway.application.McpClients;
 import io.akka.mcp.gateway.application.McpRegistryEntity;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
+import io.akka.mcp.gateway.domain.McpConfig;
 import io.akka.mcp.gateway.domain.UserSession;
 
 import java.util.Map;
@@ -35,10 +36,12 @@ public class McpToolsEndpoint extends AbstractProtectedEndpoint {
     }
 
     private boolean mayUse(UserSession session, String mcpId) {
-        return Optional.ofNullable(clientsByMcpId.get(mcpId))
-                .filter(RemoteMcpClient::isAvailable)
-                .filter(client -> session.mayUseApp(client.getRequiredOktaAppId()))
-                .isPresent();
+        return Optional.ofNullable(clientsByMcpId.get(mcpId)).filter(client -> client.isUsableBy(session)).isPresent();
+    }
+
+    private McpConfig withoutShadowedTools(McpConfig config) {
+        var client = clientsByMcpId.get(config.mcpId());
+        return new McpConfig(config.mcpId(), config.name(), config.tools().stream().filter(tool -> client.listsCachedTool(tool.name())).toList());
     }
 
     @Get("/")
@@ -57,6 +60,7 @@ public class McpToolsEndpoint extends AbstractProtectedEndpoint {
                 .invoke();
         var state = new McpRegistryEntity.State(registry.configs().stream()
                 .filter(config -> mayUse(session, config.mcpId()))
+                .map(this::withoutShadowedTools)
                 .toList());
         try {
             return HttpResponse.create()

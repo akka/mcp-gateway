@@ -120,6 +120,18 @@ public class TokenMcpIntegrationTest extends TestKitSupport {
         return new Reply(response.status().intValue(), response.body().utf8String());
     }
 
+    private Reply testConnection(SignedIn user) {
+        return testConnectionFrom(GATEWAY_ORIGIN, user);
+    }
+
+    private Reply testConnectionFrom(String origin, SignedIn user) {
+        var response = httpClient.POST(TokenMcpFixtures.path("test"))
+                .addHeader("Cookie", "SESSION=" + user.browserSession())
+                .addHeader("Origin", origin)
+                .invoke();
+        return new Reply(response.status().intValue(), response.body().utf8String());
+    }
+
     private Reply disconnect(SignedIn user) {
         return disconnectFrom(GATEWAY_ORIGIN, user);
     }
@@ -203,7 +215,7 @@ public class TokenMcpIntegrationTest extends TestKitSupport {
         var status = get(TokenMcpFixtures.path("status"), user);
         assertThat(parse(status.body()).path("connected").asBoolean()).isTrue();
         assertThat(status.body()).doesNotContain(token);
-        var test = get(TokenMcpFixtures.path("test"), user);
+        var test = testConnection(user);
         assertThat(parse(test.body()).path("ok").asBoolean()).isTrue();
         assertThat(test.body()).doesNotContain(token);
     }
@@ -280,7 +292,7 @@ public class TokenMcpIntegrationTest extends TestKitSupport {
     public void testingWithoutTheOktaApp_isForbidden() {
         var user = signIn(List.of());
 
-        assertThat(get(TokenMcpFixtures.path("test"), user).status()).isEqualTo(403);
+        assertThat(testConnection(user).status()).isEqualTo(403);
     }
 
     @Test
@@ -332,7 +344,7 @@ public class TokenMcpIntegrationTest extends TestKitSupport {
         var user = connectedUser(token);
         UPSTREAM.refusingEveryToken();
 
-        var test = get(TokenMcpFixtures.path("test"), user);
+        var test = testConnection(user);
 
         assertThat(parse(test.body()).path("ok").asBoolean()).isFalse();
         assertThat(test.body()).contains("did not accept that token").doesNotContain("401").doesNotContain("Unexpected");
@@ -783,7 +795,7 @@ public class TokenMcpIntegrationTest extends TestKitSupport {
         UPSTREAM.advertisingTo(token, new AdvertisedTool(UPSTREAM_GET_ITEM, true), new AdvertisedTool("newly_listed_tool", true));
         var bystander = signIn();
 
-        get(TokenMcpFixtures.path("test"), user);
+        testConnection(user);
 
         assertThat(listedTools(bystander)).contains(TOOL_PREFIX + "newly_listed_tool");
     }
@@ -792,7 +804,7 @@ public class TokenMcpIntegrationTest extends TestKitSupport {
     public void testingWhenNotConnected_saysSo() throws Exception {
         var user = signIn();
 
-        var test = get(TokenMcpFixtures.path("test"), user);
+        var test = testConnection(user);
 
         assertThat(parse(test.body()).path("ok").asBoolean()).isFalse();
         assertThat(test.body()).contains("Not connected");
@@ -805,9 +817,9 @@ public class TokenMcpIntegrationTest extends TestKitSupport {
         var user = connectedUser(token);
 
         UPSTREAM.respondingWithStatus(503);
-        var unavailable = get(TokenMcpFixtures.path("test"), user);
+        var unavailable = testConnection(user);
         UPSTREAM.respondingWithStatus(403);
-        var other = get(TokenMcpFixtures.path("test"), user);
+        var other = testConnection(user);
 
         assertThat(unavailable.body()).contains("could not be reached").doesNotContain(FakeMcpServer.FAILURE_BODY);
         assertThat(other.body()).contains("could not be checked").doesNotContain(FakeMcpServer.FAILURE_BODY);
@@ -815,9 +827,22 @@ public class TokenMcpIntegrationTest extends TestKitSupport {
     }
 
     @Test
-    public void statusAndTestWithoutASession_sendThePersonToSignIn() {
-        assertThat(httpClient.GET(TokenMcpFixtures.path("status")).invoke().status().intValue()).isEqualTo(302);
-        assertThat(httpClient.GET(TokenMcpFixtures.path("test")).invoke().status().intValue()).isEqualTo(302);
+    public void statusAndTestWithoutASession_areRefusedWith401() {
+        assertThat(httpClient.GET(TokenMcpFixtures.path("status")).invoke().status().intValue()).isEqualTo(401);
+        assertThat(httpClient.POST(TokenMcpFixtures.path("test")).invoke().status().intValue()).isEqualTo(401);
+    }
+
+    @Test
+    public void testingFromAnotherOrigin_isRefused_andTheUpstreamIsNotAsked() throws Exception {
+        var token = newUpstreamToken();
+        UPSTREAM.acceptingOnlyBearer(token);
+        var user = connectedUser(token);
+        var before = UPSTREAM.requestsReceived();
+
+        var reply = testConnectionFrom("https://evil.example.com", user);
+
+        assertThat(reply.status()).isEqualTo(403);
+        assertThat(UPSTREAM.requestsReceived()).isEqualTo(before);
     }
 
     @Test

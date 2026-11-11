@@ -25,4 +25,11 @@ public class TokenMcpEndpointTest {
         assertThat(TokenMcpEndpoint.originOf("/relative")).isEmpty();
         assertThat(TokenMcpEndpoint.originOf("null")).isEmpty();
     }
+
+    @Test
+    public void loggable_replacesUnprintableCharacters_andCutsALongHeader() {
+        assertThat(TokenMcpEndpoint.loggable("https://a.example.com\r\nX-Injected: 1")).isEqualTo("https://a.example.com??X-Injected: 1");
+        assertThat(TokenMcpEndpoint.loggable("h".repeat(101))).isEqualTo("h".repeat(100) + "...");
+        assertThat(TokenMcpEndpoint.loggable("h".repeat(100))).isEqualTo("h".repeat(100));
+    }
 }

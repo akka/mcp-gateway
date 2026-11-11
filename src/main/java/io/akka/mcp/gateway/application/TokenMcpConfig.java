@@ -145,14 +145,17 @@ public record TokenMcpConfig(String id, String name, String toolPrefix, String m
         if (node.has("connect-hint") && !isValidHint(hint)) {
             return new Invalid("connect-hint must be 1 to " + MAX_HINT_LENGTH + " characters with no control characters");
         }
-        return new Valid(new TokenMcpConfig(id.get(), name.get(), prefix.get(), withoutTrailingSlashes(mcpUrl.get().strip()), oktaAppId.get().strip(),
+        return new Valid(new TokenMcpConfig(id.get(), name.get(), prefix.get(), normalized(mcpUrl.get().strip()), oktaAppId.get().strip(),
                 node.path("record-tool-content").asBoolean(false), hint));
     }
 
-    private static String withoutTrailingSlashes(String url) {
+    /** The scheme in lowercase, which the HTTP client requires, and no trailing slashes, because the gateway adds the path. */
+    private static String normalized(String url) {
         var end = url.length();
         while (end > 0 && url.charAt(end - 1) == '/') end--;
-        return url.substring(0, end);
+        var trimmed = url.substring(0, end);
+        var schemeEnd = trimmed.indexOf("://");
+        return schemeEnd > 0 ? trimmed.substring(0, schemeEnd).toLowerCase() + trimmed.substring(schemeEnd) : trimmed;
     }
 
     private static boolean isValidId(String candidate) {

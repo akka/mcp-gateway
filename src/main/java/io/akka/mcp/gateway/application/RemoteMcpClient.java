@@ -1,6 +1,7 @@
 package io.akka.mcp.gateway.application;
 
 import io.akka.mcp.gateway.domain.McpConfig;
+import io.akka.mcp.gateway.domain.UserSession;
 
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,15 @@ public interface RemoteMcpClient {
 
     /** Whether this client is set up on this gateway at all. An unavailable client's tools are not listed. */
     default boolean isAvailable() { return true; }
+
+    /** Whether the user may use this system: it is set up and they hold its Okta application. */
+    default boolean isUsableBy(UserSession session) { return isAvailable() && session.mayUseApp(getRequiredOktaAppId()); }
+
+    /** Whether a tool name found in this client's cached tools is still listed. */
+    default boolean listsCachedTool(String toolName) { return true; }
+
+    /** Whether a tool name that another system also handles goes to that system. */
+    default boolean yieldsToOtherSystems() { return false; }
 
     boolean isConnected(String userId);
 

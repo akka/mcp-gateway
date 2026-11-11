@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -198,27 +199,25 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         for (var client : clients) {
             if (client.isLocalGuidance()) continue;
             var clientName = client.getMcpId();
-            if (!client.isAvailable()) {
-                log.info("MCP tools/list: {} is not set up on this gateway: hiding tools", clientName);
-                continue;
-            }
-            if (!appAssigned(session, client)) {
-                log.info("MCP tools/list: {} app not assigned to user {} — hiding tools", clientName, userId);
+            if (!client.isUsableBy(session)) {
+                log.info("MCP tools/list: hiding {} tools for user {}: {}", clientName, userId,
+                        client.isAvailable() ? "its app is not assigned" : "it is not set up on this gateway");
                 continue;
             }
             try {
-                if (client.toolListDependsOnCaller() && addCachedTools(client.getMcpId(), allTools)) {
+                var servedFromCache = client.toolListDependsOnCaller() && addCachedTools(client, allTools);
+                if (servedFromCache) {
                     log.info("MCP tools/list: {} lists the same tools to everyone, using registry cache", clientName);
                 } else if (client.isConnected(userId)) {
                     log.info("MCP tools/list: fetching live tools from {}", clientName);
                     pending.put(client, TOOLS_EXECUTOR.submit(() -> client.listTools(userId)));
-                } else {
+                } else if (!client.toolListDependsOnCaller()) {
                     log.info("MCP tools/list: {} disconnected, using registry cache", clientName);
-                    addCachedTools(client.getMcpId(), allTools);
+                    addCachedTools(client, allTools);
                 }
             } catch (Exception e) {
                 logFailure(client, "MCP tools/list: could not start fetch for " + clientName + ", using cache", e);
-                addCachedTools(client.getMcpId(), allTools);
+                addCachedTools(client, allTools);
             }
         }
 
@@ -231,14 +230,14 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             } catch (Exception e) {
                 entry.getValue().cancel(true);
                 log.error("MCP tools/list: live fetch failed or timed out for {}, falling back to cache: {}", clientName, loggable(client, e));
-                addCachedTools(client.getMcpId(), allTools);
+                addCachedTools(client, allTools);
                 continue;
             }
             if (entries.isEmpty()) {
                 // Connected but returned nothing (transient upstream hiccup): keep the last-known
                 // cache rather than overwriting it with an empty list.
                 log.warn("MCP tools/list: {} returned 0 live tools — falling back to cache", clientName);
-                addCachedTools(client.getMcpId(), allTools);
+                addCachedTools(client, allTools);
                 continue;
             }
             log.info("MCP tools/list: got {} live tools from {}", entries.size(), clientName);
@@ -248,7 +247,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
             } catch (Exception e) {
                 log.error("MCP tools/list: failed to cache tools for {}: {}", clientName, e.getMessage());
             }
-            if (!client.toolListDependsOnCaller() || !addCachedTools(client.getMcpId(), allTools)) {
+            if (!client.toolListDependsOnCaller() || !addCachedTools(client, allTools)) {
                 entries.forEach(e -> allTools.add(e.toolSpec()));
             }
         }
@@ -271,17 +270,17 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
     }
 
     /** Best-effort: append a client's last-known cached tools, and say whether there were any. Never throws. */
-    private boolean addCachedTools(String mcpId, List<Map<String, Object>> allTools) {
+    private boolean addCachedTools(RemoteMcpClient client, List<Map<String, Object>> allTools) {
+        var mcpId = client.getMcpId();
         try {
             var cached = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
                     .method(McpRegistryEntity::findByMcpId)
                     .invoke(mcpId)
                     .filter(config -> !config.tools().isEmpty());
-            cached.ifPresent(cfg -> {
-                log.info("MCP tools/list: adding {} cached tools for {}", cfg.tools().size(), mcpId);
-                cfg.tools().forEach(meta -> allTools.add(meta.toToolSpec()));
-            });
-            return cached.isPresent();
+            var listed = cached.map(cfg -> cfg.tools().stream().filter(meta -> client.listsCachedTool(meta.name())).toList()).orElse(List.of());
+            if (!listed.isEmpty()) log.info("MCP tools/list: adding {} cached tools for {}", listed.size(), mcpId);
+            listed.forEach(meta -> allTools.add(meta.toToolSpec()));
+            return !listed.isEmpty();
         } catch (Exception e) {
             log.error("MCP tools/list: cache lookup failed for {}: {}", mcpId, e.getMessage());
             return false;
@@ -303,16 +302,9 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                 .invoke(toolName);
 
         // Find the owning client regardless of connection status
-        var client = registeredMcpId
-                .flatMap(mcpId -> clients.stream()
-                        .filter(c -> c.getMcpId().equals(mcpId))
-                        .findFirst())
-                .or(() -> clients.stream()
-                        .filter(c -> c.canHandle(toolName))
-                        .findFirst())
-                .orElse(null);
+        var owner = owningClient(toolName, registeredMcpId);
 
-        if (client == null) {
+        if (owner.isEmpty()) {
             log.warn("No client can handle tool: {}", toolName);
             componentClient
                     .forEventSourcedEntity(UUID.randomUUID().toString())
@@ -321,6 +313,7 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
                             userEmail, "proxy", toolName, Map.of("error", "no-client-for-tool"), "resp"));
             return errorJson(id, -32601, "No MCP client can handle tool: " + toolName);
         }
+        var client = owner.get();
 
         if (!appAssigned(session, client)) {
             log.warn("tools/call: {} app not assigned for user {}, tool={}", client.getMcpName(), userEmail, toolName);
@@ -369,8 +362,9 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
         }
 
         var toolMeta = componentClient.forKeyValueEntity(McpRegistryEntity.ENTITY_ID)
-                .method(McpRegistryEntity::findTool)
-                .invoke(toolName);
+                .method(McpRegistryEntity::findByMcpId)
+                .invoke(client.getMcpId())
+                .flatMap(config -> config.findTool(toolName));
         boolean isLocalGuidance = client.isLocalGuidance();
         boolean isWrite = !isLocalGuidance && toolMeta
                 .map(McpConfig.ToolMeta::isWrite)
@@ -481,6 +475,16 @@ public class AkkaMcpGateway extends AbstractProtectedEndpoint {
     static String recordedError(RemoteMcpClient client, Exception e) {
         if (!client.recordsToolContent()) return loggable(client, e);
         return e.getMessage() != null ? e.getMessage() : "unknown";
+    }
+
+    /** The client a tool belongs to: a system that yields to others never takes a name another system handles. */
+    private Optional<RemoteMcpClient> owningClient(String toolName, Optional<String> registeredMcpId) {
+        var registered = registeredMcpId.flatMap(mcpId -> clients.stream().filter(c -> c.getMcpId().equals(mcpId)).findFirst());
+        if (registered.filter(RemoteMcpClient::yieldsToOtherSystems).isPresent()) {
+            var other = clients.stream().filter(c -> !c.yieldsToOtherSystems() && c.canHandle(toolName)).findFirst();
+            if (other.isPresent()) return other;
+        }
+        return registered.or(() -> clients.stream().filter(c -> c.canHandle(toolName)).findFirst());
     }
 
     /** True if the client has no required Okta app, or the session's user is assigned it. */
