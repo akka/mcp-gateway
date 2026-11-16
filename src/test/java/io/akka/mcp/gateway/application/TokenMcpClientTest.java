@@ -25,7 +25,7 @@ public class TokenMcpClientTest {
 
     private static TokenMcpClient clientFor(String url, String appId, boolean recordToolContent, ComponentClient componentClient) {
         var config = new TokenMcpConfig(TokenMcpFixtures.ID, TokenMcpFixtures.NAME, TokenMcpFixtures.TOOL_PREFIX, url, appId,
-                recordToolContent, Optional.empty());
+                recordToolContent, Optional.empty(), TokenMcpConfig.AuthMode.TOKEN);
         return new TokenMcpClient(componentClient, null, config, new PastedTokenSource(componentClient, TokenMcpFixtures.ID), name -> false);
     }
 
@@ -84,13 +84,24 @@ public class TokenMcpClientTest {
     @Test
     public void howTo_usesTheConnectorsOwnNameAndHint() {
         var config = new TokenMcpConfig("other-service", "Other Service", "Other_", HTTPS_URL, APP_ID,
-                false, Optional.of("Open the Other Service profile and create a key."));
+                false, Optional.of("Open the Other Service profile and create a key."), TokenMcpConfig.AuthMode.TOKEN);
         var client = new TokenMcpClient(null, null, config, new PastedTokenSource(null, "other-service"), name -> false);
 
         var body = client.howTo("https://gateway.example.com").markdownBody();
 
         assertThat(body).contains("How to Connect Other Service").contains("Open the Other Service profile and create a key.")
                 .contains("`Other_`").doesNotContain(TokenMcpFixtures.NAME);
+    }
+
+    @Test
+    public void howTo_forAnOAuthConnector_sendsTheUserToSignIn_notToPasteAToken() {
+        var config = new TokenMcpConfig("reports", "Reports", "Reports_", HTTPS_URL, APP_ID, false, Optional.empty(), TokenMcpConfig.AuthMode.OAUTH);
+        var client = new TokenMcpClient(null, null, config, new OAuthTokenSource(null, null, "reports"), name -> false);
+
+        var body = client.howTo("https://gateway.example.com").markdownBody();
+
+        assertThat(body).contains("How to Connect Reports").contains("click **Connect to Reports**").contains("`Reports_`").contains("signing in")
+                .doesNotContain("Paste the token");
     }
 
     @Test

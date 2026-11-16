@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
@@ -68,6 +69,7 @@ public final class FakeMcpServer implements AutoCloseable {
     private volatile int forcedStatus = NO_FORCED_STATUS;
     private volatile int forcedCallStatus = NO_FORCED_STATUS;
     private volatile String forcedLocation = NO_LOCATION;
+    private volatile String challenge = "";
 
     private FakeMcpServer(HttpServer server) {
         this.server = server;
@@ -135,6 +137,18 @@ public final class FakeMcpServer implements AutoCloseable {
         return this;
     }
 
+    /** Answers requests for this path itself, for a fake that needs more than the MCP endpoint, such as an OAuth server. */
+    public FakeMcpServer serving(String path, HttpHandler handler) {
+        server.createContext(path, handler);
+        return this;
+    }
+
+    /** From now on answers 401 unless the request's Authorization header satisfies this. */
+    public FakeMcpServer acceptingAuthorization(Predicate<String> accepted) {
+        this.authorizationAccepted = accepted;
+        return this;
+    }
+
     public String url() {
         return "http://127.0.0.1:" + server.getAddress().getPort();
     }
@@ -169,6 +183,7 @@ public final class FakeMcpServer implements AutoCloseable {
             }
             if (!authorizationAccepted.test(exchange.getRequestHeaders().getFirst("Authorization"))) {
                 exchange.getRequestBody().readAllBytes();
+                if (!challenge.isEmpty()) exchange.getResponseHeaders().add("WWW-Authenticate", challenge);
                 answerWithFailure(exchange, UNAUTHORIZED);
                 return;
             }
@@ -208,6 +223,12 @@ public final class FakeMcpServer implements AutoCloseable {
             exchange.sendResponseHeaders(200, bytes.length);
             exchange.getResponseBody().write(bytes);
         }
+    }
+
+    /** From now on every 401 carries this {@code WWW-Authenticate} challenge. */
+    public FakeMcpServer challengingWith(String wwwAuthenticate) {
+        this.challenge = wwwAuthenticate;
+        return this;
     }
 
     private static void answerWithFailure(HttpExchange exchange, int status) throws IOException {

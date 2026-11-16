@@ -16,12 +16,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
 import io.akka.mcp.gateway.api.AbstractMcpConnectionEndpoint.TestResult;
+import io.akka.mcp.gateway.application.BearerSource;
 import io.akka.mcp.gateway.application.McpClients;
 import io.akka.mcp.gateway.application.PastedTokenSource;
 import io.akka.mcp.gateway.application.RemoteMcpClient;
 import io.akka.mcp.gateway.application.TokenConnectionEvent;
 import io.akka.mcp.gateway.application.TokenMcpClient;
-import io.akka.mcp.gateway.application.ToolRegistry;
 import io.akka.mcp.gateway.application.UpstreamFailure;
 import io.akka.mcp.gateway.domain.TokenConnection;
 import io.akka.mcp.gateway.domain.UserSession;
@@ -50,7 +50,7 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
     private static final Pattern BEARER_PREFIX = Pattern.compile("^Bearer\\s+", Pattern.CASE_INSENSITIVE);
 
     /** What the dashboard needs to draw one connector's card. */
-    public record Connector(String id, String name, String connectHint) {}
+    public record Connector(String id, String name, String connectHint, boolean oauth) {}
 
     public record Status(boolean connected) {}
 
@@ -76,7 +76,7 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
         if (requireSession() == null) return unauthorized();
         return HttpResponses.ok(clientsById.values().stream()
                 .filter(TokenMcpClient::isAvailable)
-                .map(client -> new Connector(client.getMcpId(), client.getMcpName(), client.config().connectHintOrDefault()))
+                .map(client -> new Connector(client.getMcpId(), client.getMcpName(), client.config().connectHintOrDefault(), client.config().usesOAuth()))
                 .sorted(Comparator.comparing(Connector::name))
                 .toList());
     }
@@ -102,6 +102,9 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
         if (crossOrigin.isPresent()) return crossOrigin.get();
         var client = clientsById.get(id);
         if (client == null) return unknownConnector();
+        if (client.config().usesOAuth()) {
+            return testResultResponse(StatusCodes.BAD_REQUEST, TestResult.fail(client.getMcpName() + " connects by signing in, not with a token."));
+        }
         return connectWithPastedToken(client, session, request);
     }
 
@@ -132,8 +135,11 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
         if (connection == RemoteMcpClient.Connection.NOT_CONNECTED) return testResultResponse(StatusCodes.OK, TestResult.fail("Not connected."));
         try {
             var tools = client.listTools(session.email());
-            recordTools(client, tools);
+            client.cacheTools(tools);
             return testResultResponse(StatusCodes.OK, connectedResult(tools));
+        } catch (BearerSource.NotConnected e) {
+            return testResultResponse(StatusCodes.OK, TestResult.fail(e instanceof BearerSource.SignInEnded
+                    ? "Your " + client.getMcpName() + " sign-in has ended. Connect again." : "Not connected."));
         } catch (Exception e) {
             log.warn("{} connection test failed: {}", client.getMcpId(), UpstreamFailure.describe(e));
             return testResultResponse(StatusCodes.OK, resultFor(client, UpstreamFailure.classify(e)));
@@ -166,7 +172,7 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
             client.recordConnectionEvent(session.email(), TokenConnectionEvent.CONNECT_FAILED, "NOT_SAVED");
             return testResultResponse(StatusCodes.SERVICE_UNAVAILABLE, TestResult.fail("The token could not be saved. Try again shortly."));
         }
-        recordTools(client, tools);
+        client.cacheTools(tools);
         client.recordConnectionEvent(session.email(), TokenConnectionEvent.CONNECT_SUCCESS);
         return testResultResponse(StatusCodes.OK, connectedResult(tools));
     }
@@ -220,14 +226,6 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
         return ownOrigin.isPresent() && originOf(sent).equals(ownOrigin);
     }
 
-    private void recordTools(TokenMcpClient client, List<RemoteMcpClient.ToolEntry> tools) {
-        try {
-            ToolRegistry.record(componentClient, client, tools.stream().map(RemoteMcpClient.ToolEntry::meta).toList());
-        } catch (Exception e) {
-            log.warn("Could not cache the {} tools: {}", client.getMcpId(), UpstreamFailure.describe(e));
-        }
-    }
-
     private static Optional<String> pastedToken(ConnectRequest request) {
         if (request == null || request.token() == null) return Optional.empty();
         return Optional.of(BEARER_PREFIX.matcher(request.token().trim()).replaceFirst(""))
@@ -255,10 +253,13 @@ public class TokenMcpEndpoint extends AbstractProtectedEndpoint {
 
     private static TestResult resultFor(TokenMcpClient client, UpstreamFailure failure) {
         var name = client.getMcpName();
+        var oauth = client.config().usesOAuth();
         return TestResult.fail(switch (failure) {
-            case TOKEN_REJECTED -> name + " did not accept that token. Create a new one there and connect with it.";
+            case TOKEN_REJECTED -> oauth ? name + " did not accept your sign-in. Connect again."
+                    : name + " did not accept that token. Create a new one there and connect with it.";
             case UNAVAILABLE -> name + " could not be reached. Try again shortly.";
-            case OTHER -> "The token could not be checked with " + name + ".";
+            case OTHER -> oauth ? "Your connection could not be checked with " + name + "."
+                    : "The token could not be checked with " + name + ".";
         });
     }
 
