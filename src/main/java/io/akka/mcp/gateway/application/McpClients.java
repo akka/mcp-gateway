@@ -64,8 +64,15 @@ public final class McpClients {
         return TokenMcpConfig.from(config).stream()
                 .filter(entry -> !collidesWithBuiltIn(entry, builtIns))
                 .map(entry -> new TokenMcpClient(componentClient, httpClientProvider, entry,
-                        new PastedTokenSource(componentClient, entry.id()), takenByBuiltIn))
+                        bearerSourceFor(componentClient, httpClientProvider, entry), takenByBuiltIn))
                 .toList();
+    }
+
+    private static BearerSource bearerSourceFor(ComponentClient componentClient, HttpClientProvider httpClientProvider, TokenMcpConfig entry) {
+        return switch (entry.auth()) {
+            case TOKEN -> new PastedTokenSource(componentClient, entry.id());
+            case OAUTH -> new OAuthTokenSource(componentClient, new McpOAuthFlow(httpClientProvider, entry.mcpEndpointUrl(), entry.isPlainHttp()), entry.id());
+        };
     }
 
     private static boolean collidesWithBuiltIn(TokenMcpConfig entry, List<RemoteMcpClient> builtIns) {

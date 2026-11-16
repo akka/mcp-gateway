@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,7 +24,16 @@ import java.util.regex.Pattern;
  * turns a connector off and never opens it.
  */
 public record TokenMcpConfig(String id, String name, String toolPrefix, String mcpUrl, String oktaAppId,
-                             boolean recordToolContent, Optional<String> connectHint) {
+                             boolean recordToolContent, Optional<String> connectHint, AuthMode auth) {
+
+    /** How a user connects: by pasting a token the server issued, or by signing in through the server's OAuth. */
+    public enum AuthMode {
+        TOKEN, OAUTH;
+
+        static Optional<AuthMode> fromSetting(String value) {
+            return Arrays.stream(values()).filter(mode -> mode.name().toLowerCase().equals(value)).findFirst();
+        }
+    }
 
     public static final String DEFAULT_CONNECT_HINT = "Get an access token from the service, then paste it here.";
 
@@ -37,17 +47,21 @@ public record TokenMcpConfig(String id, String name, String toolPrefix, String m
     private static final Set<String> RESERVED_IDS = Set.of("proxy", "howto");
     private static final String RESERVED_ID_PREFIX = "google-workspace";
     private static final String RESERVED_NAME_PREFIX = "google workspace";
-    private static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]");
+    static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]");
     private static final String MCP_PATH = "/mcp";
     private static final int MAX_NAME_LENGTH = 60;
     private static final int MAX_HINT_LENGTH = 300;
     private static final Set<String> KNOWN_KEYS = Set.of(
-            "id", "name", "tool-prefix", "mcp-url", "okta-app-id", "record-tool-content", "connect-hint");
+            "id", "name", "tool-prefix", "mcp-url", "okta-app-id", "record-tool-content", "connect-hint", "auth");
     private static final Map<String, List<TokenMcpConfig>> PARSED = new ConcurrentHashMap<>();
 
     /** The connectors the operator set up. Each distinct setting is parsed, and its problems logged, once. */
     public static List<TokenMcpConfig> from(Config config) {
         return PARSED.computeIfAbsent(config.getString("token-mcps"), TokenMcpConfig::parse);
+    }
+
+    public String mcpEndpointUrl() {
+        return mcpUrl + MCP_PATH;
     }
 
     public String connectHintOrDefault() {
@@ -57,6 +71,15 @@ public record TokenMcpConfig(String id, String name, String toolPrefix, String m
     /** Usable only with an Okta application to gate it and a URL that does not send tokens in the clear. */
     public boolean isUsable() {
         return !oktaAppId.isBlank() && hasSecureEndpoint();
+    }
+
+    public boolean usesOAuth() {
+        return auth == AuthMode.OAUTH;
+    }
+
+    /** Only a loopback connector may be plain http, which tests and local runs use. */
+    public boolean isPlainHttp() {
+        return mcpUrl.startsWith("http://");
     }
 
     private boolean hasSecureEndpoint() {
@@ -145,8 +168,10 @@ public record TokenMcpConfig(String id, String name, String toolPrefix, String m
         if (node.has("connect-hint") && !isValidHint(hint)) {
             return new Invalid("connect-hint must be 1 to " + MAX_HINT_LENGTH + " characters with no control characters");
         }
+        var auth = node.has("auth") ? text(node, "auth").flatMap(AuthMode::fromSetting) : Optional.of(AuthMode.TOKEN);
+        if (auth.isEmpty()) return new Invalid("auth must be \"token\" or \"oauth\"");
         return new Valid(new TokenMcpConfig(id.get(), name.get(), prefix.get(), normalized(mcpUrl.get().strip()), oktaAppId.get().strip(),
-                node.path("record-tool-content").asBoolean(false), hint));
+                node.path("record-tool-content").asBoolean(false), hint, auth.get()));
     }
 
     /** The scheme in lowercase, which the HTTP client requires, and no trailing slashes, because the gateway adds the path. */

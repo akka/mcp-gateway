@@ -22,6 +22,7 @@ public enum UpstreamFailure {
     private static final int SERVER_ERROR = 500;
 
     public static UpstreamFailure classify(Throwable failure) {
+        if (failure instanceof BearerSource.Unavailable) return UNAVAILABLE;
         var status = statusOf(failure);
         if (status.filter(code -> code == UNAUTHORIZED).isPresent()) return TOKEN_REJECTED;
         if (status.filter(UpstreamFailure::isRetryable).isPresent() || hasNetworkCause(failure)) return UNAVAILABLE;

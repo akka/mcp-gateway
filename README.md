@@ -161,7 +161,7 @@ Saving a Slack draft (`slack_draft_message`) uses Slack's hosted MCP server, so 
 - `SEAMLESS_MCP_URL` *(optional — defaults to Seamless's hosted server)*
 - `SEAMLESS_OKTA_APP_ID`
 
-**Token connectors**: any MCP server whose users paste a token it issues to them instead of signing in. The operator defines them in `TOKEN_MCPS`; see [Token connectors](#token-connectors).
+**Token connectors**: any MCP server whose users paste a token it issues to them, or sign in through its own OAuth. The operator defines them in `TOKEN_MCPS`; see [Token connectors](#token-connectors).
 - `TOKEN_MCPS` *(a JSON list, one entry per connector; defaults to none)*
 
 The Okta admin lookups (account-status page) use their own system: `OKTA_ADMIN_MCP_URL` and `OKTA_ADMIN_OKTA_APP_ID`.
@@ -238,7 +238,7 @@ Group membership and app assignment establish that you are *allowed* to use a sy
 
 ### Token connectors
 
-A token connector fronts an MCP server whose users each have a token the server issues to them. Each connector is one entry in `TOKEN_MCPS`, a JSON list. It holds operator-specific URLs and Okta application ids, so set it from a secret:
+A token connector fronts an MCP server that checks every call against the user's own access. Users connect either by pasting a token the server issues to them (the default) or, with `"auth": "oauth"`, by signing in to the server through its own OAuth. Each connector is one entry in `TOKEN_MCPS`, a JSON list. It holds operator-specific URLs and Okta application ids, so set it from a secret:
 
 ```json
 [{"id": "billing", "name": "Billing", "tool-prefix": "Billing_",
@@ -254,9 +254,10 @@ A token connector fronts an MCP server whose users each have a token the server 
 | `mcp-url` | The server's base URL, to which the gateway adds `/mcp` (trailing slashes are dropped): `https`, or `http` for loopback only, with no credentials, query or fragment. Blank leaves the connector off, as does anything else that does not fit. |
 | `okta-app-id` | The Okta application that gates access. Blank leaves the connector off. |
 | `record-tool-content` | Optional. `true` keeps tool arguments and results in the history. Defaults to `false`, so the history shows only who called which tool, when and whether it succeeded. |
+| `auth` | Optional. `token` (the default) has users paste a token. `oauth` sends the browser to the server's own sign-in instead; see [OAuth connectors](#oauth-connectors). |
 | `connect-hint` | Optional, 1 to 300 characters. One line telling users how to get a token; without it they are told to get an access token from the service. Every signed-in user can read it, so keep it free of anything sensitive. |
 
-`id`, `name`, `tool-prefix`, `mcp-url` and `okta-app-id` are required keys (the last two may be blank); any other key is refused.
+`id`, `name`, `tool-prefix`, `mcp-url` and `okta-app-id` are required keys (the last two may be blank); any other key is refused. An `auth` that is neither `token` nor `oauth` skips the entry.
 
 Routes, all for a signed-in user (without a session each answers `401`): `GET /token-mcp/connectors` lists the connectors that are set up; `GET /token-mcp/{id}/status`, `POST /token-mcp/{id}/connect` (a JSON body with `token`), `POST /token-mcp/{id}/disconnect` and `POST /token-mcp/{id}/test` act on one. An unknown id is `404`. `connect` answers `400` for a token that is malformed, refused or lists no tools, `502` when the server cannot be reached or fails, `503` when the connector is off or the token cannot be saved, and `403` to a user without its Okta application or from another origin; `test` answers `503` and `403` likewise. `status` answers `connected: false` for a user without the application and `503` when the connection cannot be checked, and `disconnect` succeeds for any known id. Connect and test are not rate limited.
 
@@ -266,6 +267,27 @@ Routes, all for a signed-in user (without a session each answers `401`): `GET /t
 - **Browser requests.** Connect, disconnect and test refuse a browser request whose `Origin` is not the gateway's own address (`MCP_BASE_URL`), and log the origin they refused.
 - **One tool list.** A server can list different tools for different tokens, so the gateway only adds to its cached tool list for a connector (up to 500 tools) and lists that whole cache, less any tool name a built-in system answers to, to everyone with its Okta application. The cache grows when someone connects, tests the connection, or lists tools while connected and nothing is cached; a tool the server removes stays listed. A tool is left out if its name with the connector's prefix is not 1 to 128 letters, digits, `_`, `.` or `-`, or if its definition is over 8,000 characters, and a listing is cut at 500 tools. A tool that does not say it only reads is treated as a write, and a tool once seen as a write stays one. Do not front a server whose tool listings a user can influence or that carries per-user values, because the cache is shared.
 - **Changing a connector.** The cache and the stored tokens are kept per `id`. To point a connector at a different server or change its `tool-prefix`, give it a new `id` and a new `tool-prefix`, so that tokens issued by the old server are never sent to the new one and the old cached tools never match it. Tokens are kept in the connection entity until the user disconnects or the server refuses them; removing a connector from `TOKEN_MCPS` leaves them stored, so revoke them at the server.
+
+#### OAuth connectors
+
+An entry with `"auth": "oauth"` connects a user by signing in to the server instead of pasting a token. The server must offer MCP OAuth: a `WWW-Authenticate` challenge or `/.well-known/oauth-protected-resource` that names an authorization server, which publishes RFC 8414 (or OpenID) metadata whose `issuer` matches, and supports dynamic client registration and PKCE with `S256`. Refresh tokens keep users connected. The gateway registers itself as a public client with no secret, and asks for every scope the server advertises (from the resource metadata, else the authorization server metadata) and for the server's `/mcp` address as the `resource`. `connect-hint` has no use here, because there is nothing to paste.
+
+```json
+[{"id": "reports", "name": "Reports", "tool-prefix": "Reports_",
+  "mcp-url": "https://mcp.example.com", "okta-app-id": "0oa...", "auth": "oauth"}]
+```
+
+- **Redirect URI.** The server sees `MCP_BASE_URL` plus `/token-mcp-oauth/callback` as the gateway's redirect URI.
+- **Routes.** `GET /token-mcp-oauth/{id}/connect` starts the sign-in and `GET /token-mcp-oauth/callback` completes it. Without a session both redirect to the login page (`connect` back to the dashboard, so the user clicks Connect again). Otherwise a refusal or failure is a plain page that links back to the dashboard. For `connect`: `404` for an unknown id, `403` without the connector's Okta application or when a browser marks the request `Sec-Fetch-Site` as anything but `same-origin` or `none` (a request without the header is accepted), `503` when the connector is off, and `502` when the sign-in cannot be started. For `callback`: `400` for an unknown connector, a bad, expired, denied or empty sign-in, or one that lists no tools, `403` and `503` as for `connect`, `502` when the server cannot be reached or refuses, and `503` when the sign-in cannot be saved. Status, test and disconnect are the token connector routes. Pasting a token into an OAuth connector answers `400`.
+- **Discovery.** The resource metadata is taken from the challenge when it names one, then from the well-known address for the endpoint and for the origin; the authorization server metadata from RFC 8414, then OpenID. An address that does not answer with JSON is skipped. The resource metadata must name this server's address, or an address it lives under.
+- **Registered once.** One client is registered per connector and shared by every user, and registered again after an hour, when the redirect address or server address changes, or when a token endpoint answer says it does not know the client (`invalid_client`). A server that forgets the client without saying so makes sign-ins fail at its own page until the hour is up.
+- **Checked before kept.** The callback exchanges the code, then lists the server's tools with the access token it got, and keeps it only if that works and lists at least one tool. A started sign-in is single use and valid for 10 minutes, and is tied to the user who started it and to the server address it started for, so a sign-in that outlives a change of address is refused. A user keeps the last three started sign-ins, so a second tab does not cancel the first.
+- **Secure endpoints only.** Every address the gateway discovers must be `https` (a query is fine), unless the connector itself is on loopback `http`, and redirects are never followed. The gateway does not block private addresses, so only point a connector at a server you trust. Nothing the server says in a failure of the sign-in or the renewal reaches a user or a log; a tool call's own error still reaches the caller.
+- **Only for this server.** Tokens and the registration are kept for the server address they were issued for. Pointing a connector at another address leaves users disconnected, and the old address's tokens are never sent to the new one.
+- **Renewal.** An access token is renewed with its refresh token shortly before it expires (a minute ahead, or half its lifetime ahead if that is less). The user's connection entity does it one call at a time and saves the new tokens in the same step, so a refresh token is spent once. Only an HTTP `400` or `401` answer whose `error` is `invalid_grant` or `invalid_client` ends the sign-in, which is recorded in the history when a call finds it. Any other failure, an unreachable server included, leaves the user connected: calls keep using an access token that has not yet expired, otherwise they answer "temporarily unavailable", and the gateway does not try again for 15 seconds. A token with no refresh token counts as not connected once it expires. A refresh waits at most 5 seconds and reads at most 64 KB; if a server that rotates refresh tokens answers after the wait, the old token is already spent and the next attempt ends the sign-in.
+- **A refused token.** A `401` on an access token issued more than 30 seconds ago marks it expired, so the next call renews it. A `401` on one issued within 30 seconds, or on one that cannot be renewed, disconnects the user.
+- **Same rules as token connectors.** Okta gating, the shared add-only tool list, write classification and the default of keeping no call content all apply unchanged.
+- **Disconnecting.** Disconnect forgets the sign-in on the gateway but does not revoke it at the server. Changing `auth` on an existing `id` leaves users disconnected and leaves the old stored credential in place, so give the connector a new `id`.
 
 ## Development
 

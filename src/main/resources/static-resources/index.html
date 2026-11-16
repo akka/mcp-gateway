@@ -497,9 +497,8 @@
             }
         }
 
-        // A token connector connects with a token the user pastes, so its card has an input instead of
-        // a Connect link, and no way to reveal the token again. The cards are built from the connector
-        // list, with text nodes only, because names and hints come from the operator's configuration.
+        // A connector card has a token form or, for an OAuth connector, a Connect link, and no way to reveal a token again.
+        // The cards are built from the connector list, with text nodes only, because names and hints come from the operator's configuration.
         function tokenButton(label, className, onClick) {
             var button = document.createElement('button');
             button.className = className;
@@ -557,6 +556,28 @@
             el.textContent = message;
         }
 
+        function appendSignInLink(actions, connector) {
+            var link = tokenElement('a', 'btn btn-primary');
+            link.href = '/token-mcp-oauth/' + encodeURIComponent(connector.id) + '/connect';
+            link.textContent = 'Connect to ' + connector.name;
+            actions.appendChild(link);
+        }
+
+        function appendTokenForm(actions, connector) {
+            var prefix = 'tok-' + connector.id;
+            var connectButton;
+            var input = identified(tokenElement('input', 'token-input'), prefix + '-token-input');
+            input.type = 'password';
+            input.placeholder = connector.name + ' token';
+            input.setAttribute('aria-label', connector.name + ' token');
+            input.autocomplete = 'new-password';
+            input.spellcheck = false;
+            input.onkeydown = function(e) { if (e.key === 'Enter') connectToken(connector, connectButton); };
+            connectButton = tokenButton('Connect', 'btn btn-primary', function() { connectToken(connector, connectButton); });
+            actions.appendChild(input);
+            actions.appendChild(connectButton);
+        }
+
         function renderTokenStatus(connector, data) {
             var prefix = 'tok-' + connector.id;
             var box = document.getElementById(prefix + '-status');
@@ -572,18 +593,9 @@
                 setDot(prefix, 'connected');
             } else {
                 box.className = 'status disconnected';
-                box.textContent = 'Not connected.' + (connector.connectHint ? ' ' + connector.connectHint : '');
-                var connectButton;
-                var input = identified(tokenElement('input', 'token-input'), prefix + '-token-input');
-                input.type = 'password';
-                input.placeholder = connector.name + ' token';
-                input.setAttribute('aria-label', connector.name + ' token');
-                input.autocomplete = 'new-password';
-                input.spellcheck = false;
-                input.onkeydown = function(e) { if (e.key === 'Enter') connectToken(connector, connectButton); };
-                connectButton = tokenButton('Connect', 'btn btn-primary', function() { connectToken(connector, connectButton); });
-                actions.appendChild(input);
-                actions.appendChild(connectButton);
+                box.textContent = 'Not connected.' + (!connector.oauth && connector.connectHint ? ' ' + connector.connectHint : '');
+                if (connector.oauth) appendSignInLink(actions, connector);
+                else appendTokenForm(actions, connector);
                 document.getElementById(prefix + '-test-result').style.display = 'none';
                 setDot(prefix, 'disconnected');
             }

@@ -20,8 +20,20 @@ public final class TokenMcpFixtures {
                 """.formatted(ID, NAME, TOOL_PREFIX, mcpUrl, oktaAppId).strip();
     }
 
+    /** The HOCON setting that adds the connector as an OAuth sign-in connector. */
+    public static String oauthSetting(String mcpUrl, String oktaAppId) {
+        var entry = """
+                {"id":"%s","name":"%s","tool-prefix":"%s","mcp-url":"%s","okta-app-id":"%s","auth":"oauth"}
+                """.formatted(ID, NAME, TOOL_PREFIX, mcpUrl, oktaAppId).strip();
+        return "token-mcps = \"\"\"" + entries(entry) + "\"\"\"";
+    }
+
     public static String entries(String... entries) {
         return "[" + String.join(",", entries) + "]";
+    }
+
+    public static String oauthPath(String route) {
+        return "/token-mcp-oauth/" + route;
     }
 
     /** The path of one of the connector's routes, such as {@code status}. */

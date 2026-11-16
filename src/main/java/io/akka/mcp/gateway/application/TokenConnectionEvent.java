@@ -1,6 +1,6 @@
 package io.akka.mcp.gateway.application;
 
-/** What the interaction history records about a user's connection to a system that is not an OAuth sign-in. */
+/** What the interaction history records about a user's connection to a token connector, whether they paste a token or sign in. */
 public enum TokenConnectionEvent {
     CONNECT_BLOCKED("connect-blocked"),
     CONNECT_ATTEMPT("connect-attempt"),

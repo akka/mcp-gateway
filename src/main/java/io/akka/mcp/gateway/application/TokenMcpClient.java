@@ -56,6 +56,7 @@ public class TokenMcpClient implements RemoteMcpClient {
     private final String rejectedMessage;
     private final String unavailableMessage;
     private final String failedMessage;
+    private final String signInEndedMessage;
 
     /** A tool another system already answers to is never listed here, so a connector cannot shadow it. */
     public TokenMcpClient(ComponentClient componentClient, HttpClientProvider httpClientProvider,
@@ -66,13 +67,17 @@ public class TokenMcpClient implements RemoteMcpClient {
         this.bearers = bearers;
         this.toolNameTakenByAnotherSystem = toolNameTakenByAnotherSystem;
         this.notConnectedMessage = config.name() + " is not connected. Connect it on the gateway dashboard.";
-        this.rejectedMessage = config.name() + " did not accept your token. "
-                + "Create a new one there and connect again on the gateway dashboard.";
+        this.rejectedMessage = config.usesOAuth()
+                ? config.name() + " did not accept your sign-in. Try again, and if it keeps failing connect again on the gateway dashboard."
+                : config.name() + " did not accept your token. Create a new one there and connect again on the gateway dashboard.";
         this.unavailableMessage = config.name() + " is temporarily unavailable. Please try again shortly.";
         this.failedMessage = config.name() + " request failed. If this keeps happening, contact your administrator.";
+        this.signInEndedMessage = config.name() + " sign-in has ended. Connect again on the gateway dashboard.";
     }
 
     public TokenMcpConfig config() { return config; }
+
+    public BearerSource bearers() { return bearers; }
 
     @Override
     public String getMcpId() { return config.id(); }
@@ -85,6 +90,49 @@ public class TokenMcpClient implements RemoteMcpClient {
 
     @Override
     public HowToContent howTo(String dashboardUrl) {
+        return config.usesOAuth() ? oauthHowTo(dashboardUrl) : tokenHowTo(dashboardUrl);
+    }
+
+    private HowToContent oauthHowTo(String dashboardUrl) {
+        var name = config.name();
+        return new HowToContent(
+                "Step-by-step instructions for connecting " + name + " to the MCP Gateway.",
+                "Your own access to " + name,
+                """
+                # How to Connect %1$s
+
+                %1$s checks every call against your own access. You connect by signing in to %1$s, and the gateway
+                then acts as you.
+
+                ## Prerequisites
+                - Access to %1$s
+                - Your Okta SSO login for the MCP Gateway
+
+                ## Steps
+
+                1. **Log in to the MCP Gateway dashboard**
+                   Open %2$s and sign in with Okta.
+
+                2. **Connect**
+                   Find the %1$s card and click **Connect to %1$s**. Sign in to %1$s if asked and approve the request.
+
+                3. **Verify in your MCP client**
+                   Run `tools/list`. %1$s tools are prefixed `%3$s`. If they are missing, call
+                   `howto_refresh_tools`.
+
+                ## What the gateway keeps
+                The gateway stores the access it is given to forward it, %4$s
+                Its history shows that you called a tool, when, and whether it succeeded, plus your connects and
+                disconnects.
+
+                ## Troubleshooting
+                - "did not accept your sign-in": try again, and if it keeps failing connect again on the dashboard.
+                - "sign-in has ended": your access was revoked or could not be renewed. Connect again on the dashboard.
+                - "temporarily unavailable": %1$s could not be reached. Try again shortly.
+                """.formatted(name, dashboardUrl, config.toolPrefix(), keptContentSentence()));
+    }
+
+    private HowToContent tokenHowTo(String dashboardUrl) {
         var name = config.name();
         var hint = config.connectHintOrDefault();
         return new HowToContent(
@@ -175,8 +223,7 @@ public class TokenMcpClient implements RemoteMcpClient {
 
     @Override
     public List<ToolEntry> listTools(String userId) throws Exception {
-        var token = bearers.bearerFor(userId).orElseThrow(() -> new IllegalStateException(notConnectedMessage));
-        return listToolsWith(token);
+        return listToolsWith(bearerOrThrow(userId));
     }
 
     /** Lists the upstream's tools with a token that is not stored yet, to check it before keeping it. */
@@ -196,12 +243,39 @@ public class TokenMcpClient implements RemoteMcpClient {
         Optional<String> token;
         try {
             token = bearers.bearerFor(userId);
+        } catch (BearerSource.SignInEnded e) {
+            recordSignInEnded(userId, e);
+            return new ToolCallResult(signInEndedMessage, true);
+        } catch (BearerSource.Unavailable e) {
+            return new ToolCallResult(unavailableMessage, true);
         } catch (Exception e) {
             log.warn("{} token lookup failed: {}", config.id(), UpstreamFailure.describe(e));
             return new ToolCallResult(failedMessage, true);
         }
         if (token.isEmpty()) return new ToolCallResult(notConnectedMessage, true);
         return callWith(userId, token.get(), toolName, arguments);
+    }
+
+    private String bearerOrThrow(String userId) {
+        try {
+            return bearers.bearerFor(userId).orElseThrow(() -> new BearerSource.NotConnected(notConnectedMessage));
+        } catch (BearerSource.SignInEnded e) {
+            recordSignInEnded(userId, e);
+            throw e;
+        }
+    }
+
+    private void recordSignInEnded(String userId, BearerSource.SignInEnded ended) {
+        recordConnectionEvent(userId, TokenConnectionEvent.DISCONNECT, ended.getMessage());
+    }
+
+    /** Remembers the tools a connect or a listing saw, so users who are not connected still see them listed. */
+    public void cacheTools(List<ToolEntry> tools) {
+        try {
+            ToolRegistry.record(componentClient, this, tools.stream().map(ToolEntry::meta).toList());
+        } catch (Exception e) {
+            log.warn("Could not cache the {} tools: {}", config.id(), UpstreamFailure.describe(e));
+        }
     }
 
     public void disconnect(String userId) {

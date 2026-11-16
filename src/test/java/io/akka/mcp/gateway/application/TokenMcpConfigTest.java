@@ -29,7 +29,24 @@ public class TokenMcpConfigTest {
             assertThat(c.recordToolContent()).isFalse();
             assertThat(c.connectHint()).isEmpty();
             assertThat(c.connectHintOrDefault()).isEqualTo(TokenMcpConfig.DEFAULT_CONNECT_HINT);
+            assertThat(c.auth()).isEqualTo(TokenMcpConfig.AuthMode.TOKEN);
         });
+    }
+
+    @Test
+    public void authOauth_isRead_andTheEndpointAddsTheMcpPath() {
+        var parsed = TokenMcpConfig.parse("[" + entry("\"auth\":\"oauth\"") + "]");
+
+        assertThat(parsed).singleElement().satisfies(c -> {
+            assertThat(c.auth()).isEqualTo(TokenMcpConfig.AuthMode.OAUTH);
+            assertThat(c.mcpEndpointUrl()).isEqualTo("https://billing.example.com/mcp");
+        });
+    }
+
+    @Test
+    public void anAuthModeThatIsNeitherTokenNorOauth_skipsTheEntry() {
+        assertThat(TokenMcpConfig.parse("[" + entry("\"auth\":\"basic\"") + "]")).isEmpty();
+        assertThat(TokenMcpConfig.parse("[" + entry("\"auth\":true") + "]")).isEmpty();
     }
 
     @Test
@@ -199,7 +216,7 @@ public class TokenMcpConfigTest {
     }
 
     private static boolean usable(String url, String appId) {
-        return new TokenMcpConfig("billing", "Billing", "Billing_", url, appId, false, Optional.empty()).isUsable();
+        return new TokenMcpConfig("billing", "Billing", "Billing_", url, appId, false, Optional.empty(), TokenMcpConfig.AuthMode.TOKEN).isUsable();
     }
 
     @Test
